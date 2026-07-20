@@ -1,0 +1,23 @@
+name: etalien-task-inspector
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "31 1 * * *"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Inspect current mobile reward ladder
+        env:
+          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
+          ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
+          ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
+        run: node src/cli.mjs inspect
+

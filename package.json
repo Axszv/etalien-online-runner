@@ -1,0 +1,9 @@
+{
+  "name": "etalien-automation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "inspect": "node src/cli.mjs inspect"
+  }
+}

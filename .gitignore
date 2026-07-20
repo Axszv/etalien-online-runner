@@ -1,0 +1,5 @@
+.env
+.device.json
+.qr-session.json
+.session.json
+node_modules/
