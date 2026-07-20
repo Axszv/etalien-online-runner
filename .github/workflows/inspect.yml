@@ -19,5 +19,10 @@ jobs:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
           ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
-        run: node src/cli.mjs inspect
-
+        shell: bash
+        run: |
+          if [[ -z "$ETALIEN_TOKEN" || -z "$ETALIEN_DVC" ]]; then
+            echo "ETAlien session secrets are not configured; skipping."
+            exit 0
+          fi
+          node src/cli.mjs inspect
