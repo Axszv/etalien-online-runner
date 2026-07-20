@@ -38,18 +38,13 @@ node src/cli.mjs login-code PHONE
 node src/cli.mjs login PHONE CODE
 ```
 
-An independent WeChat QR session is available without reading the desktop
-client files:
+For the Windows-compatible password login flow, use:
 
 ```text
-node src/cli.mjs qr-start
-node src/cli.mjs qr-poll
+node src/cli.mjs login-password PHONE PASSWORD
 ```
 
-Open the URL printed by `qr-start`, authorize it in WeChat, then run
-`qr-poll`. The same generated device ID is reused for polling and later API
-calls.
-
+The APK-compatible SMS flow remains available with `login-code` and `login`.
 The CLI masks the authorization value in normal output and saves the full
 session to the ignored `.session.json` file. Deployments should store those
 values in the platform secret store rather than committing the file.

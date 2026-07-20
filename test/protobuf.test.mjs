@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeAdActivity, decodeWxQrState, signRequest } from "../src/client.mjs";
+import { decodeAdActivity, signRequest } from "../src/client.mjs";
 import { encodeVarint, encodeStringField, concatBytes } from "../src/protobuf.mjs";
 
 test("signRequest follows the Android canonical ordering", () => {
@@ -9,20 +9,6 @@ test("signRequest follows the Android canonical ordering", () => {
   assert.match(signed.toString(), /a=first&nonce=abc123&ts=1700000000&ver=2023-08-28&z=last/);
 });
 
-test("decodeWxQrState reads an authorized session", () => {
-  const data = concatBytes(
-    encodeStringField(1, "13800000000"),
-    encodeVarint(16n), encodeVarint(42n),
-    encodeStringField(3, "TOKEN"),
-    encodeVarint(32n), encodeVarint(0n),
-  );
-  assert.deepEqual(decodeWxQrState(data), {
-    phone: "13800000000",
-    userId: 42,
-    authorization: "TOKEN",
-    bindId: 0,
-  });
-});
 
 test("decodeAdActivity reads current progress and reward ladder", () => {
   const stage = concatBytes(encodeVarint(8n | 0n), encodeVarint(1n), encodeVarint(16n), encodeVarint(1n), encodeVarint(24n), encodeVarint(60n), encodeVarint(32n), encodeVarint(1n));

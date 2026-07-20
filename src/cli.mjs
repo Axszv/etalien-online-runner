@@ -56,44 +56,19 @@ async function main() {
     return;
   }
 
-  if (command === "qr-start") {
-    const qr = await client.getWxQrUrl(Number(process.argv[3] || 0));
-    fs.writeFileSync(new URL("../.qr-session.json", import.meta.url), JSON.stringify({
-      ...qr,
+  if (command === "login-password") {
+    const phone = process.argv[3];
+    const password = process.argv[4];
+    if (!phone || !password) throw new Error("usage: node src/cli.mjs login-password PHONE PASSWORD");
+    const session = await client.loginPassword(phone, password);
+    if (!session.authorization) throw new Error("phone binding succeeded without an authorization token");
+    fs.writeFileSync(new URL("../.session.json", import.meta.url), JSON.stringify({
+      ...session,
       dvc: client.dvc,
       channel: client.channel,
-      createdAt: new Date().toISOString(),
     }, null, 2), { mode: 0o600 });
-    console.log(JSON.stringify(qr, null, 2));
+    console.log(JSON.stringify({ ok: true, userId: session.userId }, null, 2));
     return;
-  }
-
-  if (command === "qr-poll") {
-    const qrFile = new URL("../.qr-session.json", import.meta.url);
-    const qr = JSON.parse(fs.readFileSync(qrFile, "utf8"));
-    client.dvc = qr.dvc;
-    const timeoutAt = Date.now() + Number(process.env.ETALIEN_QR_TIMEOUT_MS || 180000);
-    while (Date.now() < timeoutAt) {
-      const state = await client.getWxQrState(qr.state);
-      if (state.pending) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        continue;
-      }
-      if (state.authorization) {
-        fs.writeFileSync(new URL("../.session.json", import.meta.url), JSON.stringify({
-          ...state,
-          dvc: client.dvc,
-          channel: client.channel,
-        }, null, 2), { mode: 0o600 });
-        console.log(JSON.stringify({ ok: true, userId: state.userId, phone: state.phone, bindId: state.bindId }, null, 2));
-        return;
-      }
-      if (state.bindId) {
-        throw new Error(`WeChat account requires phone binding (bindId ${state.bindId})`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
-    throw new Error("QR authorization timed out; run qr-start again");
   }
 
   throw new Error(`unknown command: ${command}`);

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { concatBytes, encodeIntField, encodeStringField, intField, boolField, messageFields, parseFields, stringField } from "./protobuf.mjs";
+import { concatBytes, encodeStringField, intField, boolField, messageFields, parseFields, stringField } from "./protobuf.mjs";
 
 const DEFAULT_BASE_URL = "https://api.et-api.com/";
 const SIGN_VERSION = "2023-08-28";
@@ -73,16 +73,6 @@ export function decodeApiError(buffer) {
   };
 }
 
-export function decodeWxQrState(buffer) {
-  const fields = parseFields(buffer);
-  return {
-    phone: stringField(fields, 1),
-    userId: intField(fields, 2),
-    authorization: stringField(fields, 3),
-    bindId: intField(fields, 4),
-  };
-}
-
 export class EtalienClient {
   constructor({ token = "", dvc = "", channel = "official", baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch } = {}) {
     this.token = token;
@@ -136,23 +126,11 @@ export class EtalienClient {
     return decodeLoginResponse(await this.request("/account/v1/login", { method: "POST", body }));
   }
 
-
-  async getWxQrUrl(type = 0) {
-    const body = encodeIntField(1, type);
-    const fields = parseFields(await this.request("/v2/account/wx/qrcode/url", { method: "POST", body }));
-    const url = stringField(fields, 1);
-    if (!url) throw new Error("QR URL response did not include a URL");
-    return { url, state: new URL(url).searchParams.get("state") || "" };
-  }
-
-  async getWxQrState(uuid) {
-    const body = encodeStringField(1, uuid);
-    const result = await this.requestRaw("/v2/account/wx/qrcode/login/state", { method: "POST", body });
-    if (result.ok) return { pending: false, ...decodeWxQrState(result.data) };
-    const error = decodeApiError(result.data);
-    if (result.status === 500 && error.detail.includes("not found bind info")) {
-      return { pending: true, error };
-    }
-    throw new Error(`QR state failed: HTTP ${result.status} ${error.code} ${error.message} ${error.detail}`);
+  async loginPassword(phoneNumber, password) {
+    const body = concatBytes(
+      encodeStringField(1, phoneNumber),
+      encodeStringField(2, password),
+    );
+    return decodeLoginResponse(await this.request("/v2/account/login", { method: "POST", body }));
   }
 }
