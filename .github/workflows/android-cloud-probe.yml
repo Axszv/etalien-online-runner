@@ -47,7 +47,7 @@ jobs:
           disable-linux-hw-accel: auto
           disable-animations: true
           emulator-options: >-
-            -no-window -noaudio -no-boot-anim
+            -no-window -noaudio -no-boot-anim -accel off
             -gpu swiftshader_indirect
             -camera-back none -camera-front none
           script: bash scripts/android-cloud-probe.sh artifacts/android_ETAPP_v3.13.10_.apk diagnostics
