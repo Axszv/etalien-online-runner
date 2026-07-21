@@ -36,17 +36,42 @@ if [[ -z "$package_name" ]]; then
 fi
 echo "package=$package_name" | tee -a "$out/environment.txt"
 
+for permission in \
+  android.permission.READ_PHONE_STATE \
+  android.permission.ACCESS_COARSE_LOCATION \
+  android.permission.ACCESS_FINE_LOCATION \
+  android.permission.READ_EXTERNAL_STORAGE \
+  android.permission.WRITE_EXTERNAL_STORAGE
+do
+  adb shell pm grant "$package_name" "$permission" > /dev/null 2>&1 || true
+done
+
 adb logcat -c
 adb shell monkey -p "$package_name" -c android.intent.category.LAUNCHER 1 \
   > "$out/launch.txt" 2>&1 || true
-sleep 25
+sleep 15
+
+capture_ui() {
+  local name="$1"
+  adb shell uiautomator dump "/sdcard/$name.xml" \
+    > "$out/uiautomator-$name.txt" 2>&1 || true
+  adb pull "/sdcard/$name.xml" "$out/$name.xml" > /dev/null 2>&1 || true
+  adb exec-out screencap -p > "$out/$name.png" || true
+}
+
+capture_ui screen-initial
+if grep -q 'id/UIConfirm' "$out/screen-initial.xml" 2>/dev/null; then
+  adb shell input tap 717 1484
+  echo "privacy_confirm=clicked" | tee -a "$out/environment.txt"
+  sleep 20
+else
+  echo "privacy_confirm=not_present" | tee -a "$out/environment.txt"
+fi
+capture_ui screen-after-consent
 
 adb shell dumpsys package "$package_name" > "$out/package.txt" || true
 adb shell dumpsys activity activities > "$out/activities.txt" || true
 adb shell dumpsys window windows > "$out/windows.txt" || true
-adb shell uiautomator dump /sdcard/window.xml > "$out/uiautomator.txt" 2>&1 || true
-adb pull /sdcard/window.xml "$out/window.xml" > /dev/null 2>&1 || true
-adb exec-out screencap -p > "$out/screen.png" || true
 adb logcat -d -v threadtime > "$out/logcat.txt" || true
 
 pid="$(adb shell pidof "$package_name" | tr -d '\r' || true)"
