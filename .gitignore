@@ -4,3 +4,4 @@
 .session.json
 node_modules/
 hs_err_pid*.log
+.tmp-run*/

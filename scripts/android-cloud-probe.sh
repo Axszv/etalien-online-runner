@@ -88,12 +88,14 @@ if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
     adb shell input tap 162 567
     sleep 3
   fi
-  adb shell input tap 900 2100
+  # The app opens on "My games". Capture the mobile view, then use the
+  # computer half of the phone/computer segmented control to enter PC mode.
+  adb shell input tap 540 2070
+  sleep 5
+  capture_ui screen-my-games-mobile
+  adb shell input tap 455 220
   sleep 12
-  capture_ui screen-profile
-  adb shell input tap 360 440
-  sleep 12
-  capture_ui screen-reward-center
+  capture_ui screen-my-games-pc
   echo "session_injected=true" | tee -a "$out/environment.txt"
 fi
 
