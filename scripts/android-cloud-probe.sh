@@ -96,6 +96,18 @@ if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
   adb shell input tap 455 220
   sleep 12
   capture_ui screen-my-games-pc
+  if grep -q '看广告 领时长' "$out/screen-my-games-pc.xml" 2>/dev/null; then
+    date -u +'%Y-%m-%dT%H:%M:%SZ' > "$out/pc-ad-clicked-at.txt"
+    adb shell input tap 540 1695
+    sleep 12
+    capture_ui screen-pc-ad-12s
+    sleep 25
+    capture_ui screen-pc-ad-37s
+    sleep 35
+    capture_ui screen-pc-ad-72s
+  else
+    echo "pc_reward_button=not_found" | tee -a "$out/environment.txt"
+  fi
   echo "session_injected=true" | tee -a "$out/environment.txt"
 fi
 
