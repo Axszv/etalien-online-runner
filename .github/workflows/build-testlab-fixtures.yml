@@ -1,0 +1,44 @@
+name: build-testlab-fixtures
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download private APK fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts
+          gh release download android-fixture-v3.13.10 \
+            --pattern android_ETAPP_v3.13.10_.apk \
+            --dir artifacts
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build Test Lab target and runner APKs
+        run: |
+          bash scripts/build-testlab-fixtures.sh \
+            artifacts/android_ETAPP_v3.13.10_.apk \
+            testlab-build
+
+      - name: Upload Test Lab fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: etalien-testlab-fixtures-${{ github.run_id }}
+          path: |
+            testlab-build/etalien-testlab-signed.apk
+            testlab-build/etalien-cloudtest.apk
+          if-no-files-found: error
+          retention-days: 1

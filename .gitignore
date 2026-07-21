@@ -5,3 +5,5 @@
 node_modules/
 hs_err_pid*.log
 .tmp-run*/
+.tmp-apk-fixture/
+testlab-build/
