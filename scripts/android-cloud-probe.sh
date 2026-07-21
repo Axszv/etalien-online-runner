@@ -91,6 +91,9 @@ if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
   adb shell input tap 900 2100
   sleep 12
   capture_ui screen-profile
+  adb shell input tap 360 440
+  sleep 12
+  capture_ui screen-reward-center
   echo "session_injected=true" | tee -a "$out/environment.txt"
 fi
 
