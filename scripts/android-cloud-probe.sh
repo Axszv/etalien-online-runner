@@ -53,9 +53,18 @@ sleep 15
 
 capture_ui() {
   local name="$1"
-  adb shell uiautomator dump "/sdcard/$name.xml" \
-    > "$out/uiautomator-$name.txt" 2>&1 || true
-  adb pull "/sdcard/$name.xml" "$out/$name.xml" > /dev/null 2>&1 || true
+  local attempt
+  rm -f "$out/$name.xml"
+  for attempt in 1 2 3; do
+    adb shell rm -f "/sdcard/$name.xml" > /dev/null 2>&1 || true
+    adb shell uiautomator dump "/sdcard/$name.xml" \
+      >> "$out/uiautomator-$name.txt" 2>&1 || true
+    adb pull "/sdcard/$name.xml" "$out/$name.xml" > /dev/null 2>&1 || true
+    if [[ -s "$out/$name.xml" ]]; then
+      break
+    fi
+    sleep 2
+  done
   adb exec-out screencap -p > "$out/$name.png" || true
 }
 
@@ -87,6 +96,7 @@ if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
   if grep -q 'id/UISubmit' "$out/screen-with-session.xml" 2>/dev/null; then
     adb shell input tap 162 567
     sleep 3
+    capture_ui screen-after-tutorial
   fi
   # The app opens on "My games". Capture the mobile view, then use the
   # computer half of the phone/computer segmented control to enter PC mode.
