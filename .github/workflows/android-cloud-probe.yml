@@ -8,8 +8,8 @@ permissions:
 
 jobs:
   probe:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 50
+    runs-on: macos-15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
