@@ -69,18 +69,48 @@ else
 fi
 capture_ui screen-after-consent
 
+if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
+  adb root > "$out/adb-root.txt" 2>&1 || true
+  adb wait-for-device
+  node scripts/create-android-session-prefs.mjs /tmp/spUtils.xml
+  adb push /tmp/spUtils.xml /data/local/tmp/spUtils.xml > /dev/null
+  app_data="/data/user/0/$package_name"
+  owner="$(adb shell stat -c '%u:%g' "$app_data/shared_prefs/spUtils.xml" | tr -d '\r')"
+  adb shell am force-stop "$package_name"
+  adb shell cp /data/local/tmp/spUtils.xml "$app_data/shared_prefs/spUtils.xml"
+  adb shell chown "$owner" "$app_data/shared_prefs/spUtils.xml"
+  adb shell chmod 660 "$app_data/shared_prefs/spUtils.xml"
+  adb shell monkey -p "$package_name" -c android.intent.category.LAUNCHER 1 \
+    > "$out/session-launch.txt" 2>&1 || true
+  sleep 20
+  capture_ui screen-with-session
+  if grep -q 'id/UISubmit' "$out/screen-with-session.xml" 2>/dev/null; then
+    adb shell input tap 162 567
+    sleep 3
+  fi
+  adb shell input tap 900 2100
+  sleep 12
+  capture_ui screen-profile
+  echo "session_injected=true" | tee -a "$out/environment.txt"
+fi
+
 adb shell dumpsys package "$package_name" > "$out/package.txt" || true
 adb shell dumpsys activity activities > "$out/activities.txt" || true
 adb shell dumpsys window windows > "$out/windows.txt" || true
 adb logcat -d -v threadtime > "$out/logcat.txt" || true
 
-adb root > "$out/adb-root.txt" 2>&1 || true
-adb wait-for-device || true
-app_data="/data/user/0/$package_name"
-adb shell find "$app_data" -maxdepth 4 -type f \
-  > "$out/app-data-files.txt" 2>&1 || true
-adb exec-out tar -C "$app_data" -cf - shared_prefs files databases \
-  > "$out/app-data.tar" 2> "$out/app-data-tar.txt" || true
+if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
+  node -e 'const fs=require("fs"); const p=process.argv[1]; const t=process.env.ETALIEN_TOKEN; const s=fs.readFileSync(p,"utf8"); fs.writeFileSync(p,s.split(t).join("[REDACTED]"));' "$out/logcat.txt"
+  echo "App-data export skipped because a session was injected." > "$out/app-data-tar.txt"
+else
+  adb root > "$out/adb-root.txt" 2>&1 || true
+  adb wait-for-device || true
+  app_data="/data/user/0/$package_name"
+  adb shell find "$app_data" -maxdepth 4 -type f \
+    > "$out/app-data-files.txt" 2>&1 || true
+  adb exec-out tar -C "$app_data" -cf - shared_prefs files databases \
+    > "$out/app-data.tar" 2> "$out/app-data-tar.txt" || true
+fi
 
 pid="$(adb shell pidof "$package_name" | tr -d '\r' || true)"
 if [[ -n "$pid" ]]; then

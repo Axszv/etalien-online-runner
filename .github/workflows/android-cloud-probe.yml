@@ -37,6 +37,9 @@ jobs:
 
       - name: Boot Android and probe application
         uses: ReactiveCircus/android-emulator-runner@v2
+        env:
+          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
+          ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
         with:
           api-level: 35
           target: google_apis
