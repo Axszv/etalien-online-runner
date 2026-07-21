@@ -80,5 +80,10 @@ if [[ -n "$pid" ]]; then
   exit 0
 fi
 
+if grep -q '>>> com\.etalien\.booster <<<' "$out/logcat.txt" 2>/dev/null; then
+  echo "NATIVE_CRASH package=$package_name" | tee "$out/probe-status.txt"
+  exit 3
+fi
+
 echo "LAUNCH_FAILED package=$package_name" | tee "$out/probe-status.txt"
 exit 2
