@@ -74,6 +74,14 @@ adb shell dumpsys activity activities > "$out/activities.txt" || true
 adb shell dumpsys window windows > "$out/windows.txt" || true
 adb logcat -d -v threadtime > "$out/logcat.txt" || true
 
+adb root > "$out/adb-root.txt" 2>&1 || true
+adb wait-for-device || true
+app_data="/data/user/0/$package_name"
+adb shell find "$app_data" -maxdepth 4 -type f \
+  > "$out/app-data-files.txt" 2>&1 || true
+adb exec-out tar -C "$app_data" -cf - shared_prefs files databases \
+  > "$out/app-data.tar" 2> "$out/app-data-tar.txt" || true
+
 pid="$(adb shell pidof "$package_name" | tr -d '\r' || true)"
 if [[ -n "$pid" ]]; then
   echo "LAUNCH_OK package=$package_name pid=$pid" | tee "$out/probe-status.txt"
