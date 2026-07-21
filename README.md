@@ -52,3 +52,24 @@ values in the platform secret store rather than committing the file.
 The first implementation intentionally separates task discovery from ad
 playback. A successful ad reward requires a valid rewarded-ad SDK callback;
 the business API does not expose a direct mobile reward-submit endpoint.
+
+## PC reward automation status
+
+The Android client exposes a separate PC acceleration reward page under
+`My games` and the computer side of the phone/computer switch. The current
+daily ladder displays `0 / 9` and three reward stages worth 20, 30, and 10
+minutes per completed rewarded ad.
+
+The API 35 GitHub-hosted Android emulator can install the ARM APK through
+`libndk_translation`, inject the existing session, and reach the PC reward
+button. It does not currently receive playable ad inventory. The observed PC
+slot `1109380` reports a failed `WMRewardAdDex` demand, Octopus error `80100`,
+and a no-bid result, so the UI remains at `Advertising loading` and no reward
+is credited.
+
+`build-testlab-fixtures.yml` is manual and only builds two token-free APKs for
+a Firebase Test Lab physical-device probe. It does not submit a test matrix.
+Run physical-device experiments only in a Firebase Spark project that is not
+linked to Cloud Billing. A Blaze project has 30 physical-device minutes and
+60 virtual-device minutes per project per day before paid per-minute usage;
+those are aggregate daily allowances, not allowances for every test run.
