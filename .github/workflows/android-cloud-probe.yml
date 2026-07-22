@@ -41,7 +41,7 @@ jobs:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_4
@@ -53,7 +53,15 @@ jobs:
             -no-window -noaudio -no-boot-anim
             -gpu swiftshader_indirect
             -camera-back none -camera-front none
-          script: bash scripts/android-cloud-probe.sh artifacts/android_ETAPP_v3.13.10_.apk diagnostics
+            -prop ro.product.model=25060RK16C
+            -prop ro.product.manufacturer=REDMI
+            -prop ro.product.brand=REDMI
+            -prop ro.product.name=onyx
+            -prop ro.product.device=onyx
+            -prop ro.build.characteristics=default
+          script: |
+            bash scripts/configure-ldplayer-like-device.sh diagnostics
+            bash scripts/android-cloud-probe.sh artifacts/android_ETAPP_v3.13.10_.apk diagnostics
 
       - name: Upload probe diagnostics
         if: always()

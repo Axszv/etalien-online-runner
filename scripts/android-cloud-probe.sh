@@ -106,6 +106,8 @@ if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
   adb shell input tap 455 220
   sleep 12
   capture_ui screen-my-games-pc
+  grep -Eo '[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' "$out/screen-my-games-pc.xml" \
+    | head -n 1 > "$out/pc-progress-before.txt" || true
   if grep -q '看广告 领时长' "$out/screen-my-games-pc.xml" 2>/dev/null; then
     date -u +'%Y-%m-%dT%H:%M:%SZ' > "$out/pc-ad-clicked-at.txt"
     adb shell input tap 540 1695
@@ -115,6 +117,16 @@ if [[ -n "${ETALIEN_TOKEN:-}" ]]; then
     capture_ui screen-pc-ad-37s
     sleep 35
     capture_ui screen-pc-ad-72s
+    if grep -q 'id/UIPCDurationCard' "$out/screen-pc-ad-12s.xml" 2>/dev/null; then
+      echo "ad_activity_opened=false" | tee -a "$out/environment.txt"
+    else
+      echo "ad_activity_opened=true" | tee -a "$out/environment.txt"
+    fi
+    adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+    sleep 8
+    capture_ui screen-pc-after-ad
+    grep -Eo '[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' "$out/screen-pc-after-ad.xml" \
+      | head -n 1 > "$out/pc-progress-after.txt" || true
   else
     echo "pc_reward_button=not_found" | tee -a "$out/environment.txt"
   fi

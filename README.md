@@ -79,6 +79,15 @@ bypass-mainland mode can still produce a DNS failure for
 stronger remaining difference is the GitHub emulator's virtual hardware,
 advertising identity, and SDK adapter environment.
 
+The manual `android-cloud-probe.yml` experiment now uses Android 34 and applies
+the configurable identity surface observed in LDPlayer: a REDMI model, stable
+Android ID, mainland SIM/operator properties, China timezone-facing settings,
+and disabled developer/ADB setting flags. It records the effective properties
+as well as PC progress before and after the ad attempt. This changes the
+SDK-visible phone profile but intentionally leaves the x86_64 ABI,
+`libndk_translation`, and underlying `ranchu/qemu` hardware intact so the test
+can show whether model/profile spoofing alone changes ad inventory.
+
 `build-testlab-fixtures.yml` is manual and only builds two token-free APKs for
 a Firebase Test Lab physical-device probe. It does not submit a test matrix.
 Run experiments only in the dedicated Firebase Spark project that is not
