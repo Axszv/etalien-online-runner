@@ -3,9 +3,10 @@ package com.etalien.cloudtest;
 import android.app.Activity;
 import android.app.Instrumentation;
 import android.app.UiAutomation;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
-import android.util.Base64;
 import android.util.Log;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -76,28 +77,16 @@ public final class Runner extends Instrumentation {
     }
 
     private void injectSession(String token, String dvc) throws Exception {
-        StringBuilder xml = new StringBuilder()
-            .append("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n")
-            .append("<map>\n")
-            .append("    <boolean name=\"AGREE_PRIVACY\" value=\"true\" />\n")
-            .append("    <string name=\"CUR_USER_TOKEN\">")
-            .append(escapeXml(token))
-            .append("</string>\n");
+        Context target = getTargetContext();
+        SharedPreferences.Editor editor = target
+            .getSharedPreferences("spUtils", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("AGREE_PRIVACY", true)
+            .putString("CUR_USER_TOKEN", token);
         if (!dvc.isEmpty()) {
-            xml.append("    <string name=\"CACHE_ANDROID_ID\">")
-                .append(escapeXml(dvc))
-                .append("</string>\n");
+            editor.putString("CACHE_ANDROID_ID", dvc);
         }
-        xml.append("</map>\n");
-
-        String encoded = Base64.encodeToString(
-            xml.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-        shell("am force-stop " + PACKAGE);
-        shell("run-as " + PACKAGE + " sh -c 'mkdir -p shared_prefs && echo "
-            + encoded + " | base64 -d > shared_prefs/spUtils.xml && "
-            + "chmod 600 shared_prefs/spUtils.xml'");
-        String sessionFile = shell("run-as " + PACKAGE + " ls shared_prefs/spUtils.xml");
-        if (!sessionFile.contains("spUtils.xml")) {
+        if (!editor.commit()) {
             throw new IllegalStateException("Session preference injection failed");
         }
         shell("am start -W -n " + PACKAGE + "/com.etalien.booster.ui.SplashActivity");
@@ -138,7 +127,7 @@ public final class Runner extends Instrumentation {
                 return;
             }
             if (System.currentTimeMillis() >= closeAfter) {
-                clickFirstText("领取奖励", "关闭", "完成");
+                clickFirstText("\u9886\u53d6\u5956\u52b1", "\u5173\u95ed", "\u5b8c\u6210");
             }
             sleep(2_000);
         }
@@ -222,14 +211,6 @@ public final class Runner extends Instrumentation {
             }
         }
         return output.toString();
-    }
-
-    private static String escapeXml(String value) {
-        return value.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;");
     }
 
     private static void sleep(long milliseconds) throws InterruptedException {
