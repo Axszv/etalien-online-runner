@@ -42,24 +42,43 @@ public final class Runner extends Instrumentation {
             injectSession(token, dvc);
             openPcRewardPage();
 
-            int before = readProgress();
-            result.putInt("progress_before", before);
-            Log.i(TAG, "PC reward progress before ad: " + before + "/9");
+            RewardProgress progress = readProgress();
+            int initialProgress = progress.current;
+            int maxAds = intArgument("ETALIEN_MAX_ADS", 9);
+            int adsCompleted = 0;
+            result.putInt("progress_before", initialProgress);
+            result.putInt("progress_total", progress.total);
+            Log.i(TAG, "PC reward progress before ads: " + progress);
 
-            clickById("UIADSubmit", 20_000);
-            boolean adOpened = waitForAdToOpen(50_000);
-            result.putBoolean("ad_opened", adOpened);
-            if (!adOpened) {
-                throw new IllegalStateException("Rewarded ad stayed in loading state");
-            }
+            while (progress.current < progress.total && adsCompleted < maxAds) {
+                int before = progress.current;
+                Log.i(TAG, "Starting rewarded ad " + (adsCompleted + 1)
+                    + ", current progress: " + progress);
+                clickById("UIADSubmit", 20_000);
+                boolean adOpened = waitForAdToOpen(50_000);
+                result.putBoolean("ad_opened", adOpened);
+                if (!adOpened) {
+                    throw new IllegalStateException("Rewarded ad stayed in loading state");
+                }
 
-            waitForAdAndReturn(90_000);
-            int after = readProgress();
-            result.putInt("progress_after", after);
-            Log.i(TAG, "PC reward progress after ad: " + after + "/9");
-            if (after <= before) {
-                throw new IllegalStateException("Reward callback did not advance PC progress");
+                waitForAdAndReturn(90_000);
+                RewardProgress after = readProgress();
+                Log.i(TAG, "PC reward progress after ad: " + after);
+                if (after.current <= before) {
+                    throw new IllegalStateException("Reward callback did not advance PC progress");
+                }
+                adsCompleted++;
+                progress = after;
+                if (progress.current < progress.total && adsCompleted < maxAds) {
+                    sleep(3_000);
+                    waitForAnyId("UIADSubmit", 20_000);
+                }
             }
+            result.putInt("ads_completed", adsCompleted);
+            result.putInt("progress_after", progress.current);
+            result.putInt("progress_total", progress.total);
+            Log.i(TAG, "PC reward run finished after " + adsCompleted
+                + " ad(s), final progress: " + progress);
             finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {
             Log.e(TAG, "Physical-device probe failed: " + error.getMessage(), error);
@@ -74,6 +93,16 @@ public final class Runner extends Instrumentation {
             throw new IllegalArgumentException(name + " is required");
         }
         return value;
+    }
+
+    private int intArgument(String name, int fallback) {
+        String value = arguments.getString(name, "");
+        if (value.isEmpty()) return fallback;
+        int parsed = Integer.parseInt(value);
+        if (parsed < 1 || parsed > 20) {
+            throw new IllegalArgumentException(name + " must be between 1 and 20");
+        }
+        return parsed;
     }
 
     private void injectSession(String token, String dvc) throws Exception {
@@ -135,16 +164,38 @@ public final class Runner extends Instrumentation {
         waitForAnyId("UIPCDurationCard", 15_000);
     }
 
-    private int readProgress() throws Exception {
+    private RewardProgress readProgress() throws Exception {
         AccessibilityNodeInfo root = waitForRoot(15_000);
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId(PREFIX + "UIStateTitle");
         for (AccessibilityNodeInfo node : nodes) {
             CharSequence text = node.getText();
             if (text == null) continue;
             Matcher matcher = PROGRESS.matcher(text);
-            if (matcher.find()) return Integer.parseInt(matcher.group(1));
+            if (matcher.find()) {
+                return new RewardProgress(
+                    Integer.parseInt(matcher.group(1)),
+                    Integer.parseInt(matcher.group(2)));
+            }
         }
         throw new IllegalStateException("PC progress node was not found");
+    }
+
+    private static final class RewardProgress {
+        final int current;
+        final int total;
+
+        RewardProgress(int current, int total) {
+            if (current < 0 || total < 1 || current > total) {
+                throw new IllegalArgumentException("Invalid reward progress: " + current + "/" + total);
+            }
+            this.current = current;
+            this.total = total;
+        }
+
+        @Override
+        public String toString() {
+            return current + "/" + total;
+        }
     }
 
     private void clickFirstText(String... labels) {
