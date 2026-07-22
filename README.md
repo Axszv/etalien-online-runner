@@ -67,6 +67,18 @@ slot `1109380` reports a failed `WMRewardAdDex` demand, Octopus error `80100`,
 and a no-bid result, so the UI remains at `Advertising loading` and no reward
 is credited.
 
+The same APK was also tested in LDPlayer 14 on an Intel Windows host. It
+reports `x86_64` plus `libhoudini.so`, but exposes a Qualcomm-like device
+profile (`ro.hardware=qcom`, no `ro.kernel.qemu`) and a Beijing China Mobile
+egress. It successfully loaded Baidu rewarded slot `bd-18180485`. Repeating
+the test with the Android proxy routed through a Hong Kong HKT exit also
+loaded the same slot; the page advanced from `1 / 9` to `2 / 9` and added 20
+minutes. A mainland egress is therefore not a hard requirement. V2rayN's
+bypass-mainland mode can still produce a DNS failure for
+`amdcopen.m.umeng.com`, but it did not prevent the observed ad reward. The
+stronger remaining difference is the GitHub emulator's virtual hardware,
+advertising identity, and SDK adapter environment.
+
 `build-testlab-fixtures.yml` is manual and only builds two token-free APKs for
 a Firebase Test Lab physical-device probe. It does not submit a test matrix.
 Run physical-device experiments only in a Firebase Spark project that is not

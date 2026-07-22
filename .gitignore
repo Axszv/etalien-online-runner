@@ -7,4 +7,5 @@ hs_err_pid*.log
 .tmp-run*/
 .tmp-apk-fixture/
 .tmp-testlab-*/
+.tmp-ldplayer-*
 testlab-build/
