@@ -90,15 +90,18 @@ completed probe displayed a 4399 Game Box video and returned to the PC reward
 page. Its observed `2 / 9` to `3 / 9` transition overlapped with an LDPlayer
 test on the same account, so that run alone does not isolate which device
 credited the reward. Later isolation attempts were stopped by Test Lab with
-`Internal System Error 3` before device logs were produced.
+`Internal System Error 3` before device logs were produced. The same
+provisioning error was reproduced on `MediumPhone.arm` Android 34 and
+`SmallPhone.arm` Android 34/33, so it is not tied to one virtual model, Android
+version, account session, ad network, or runner action.
 
-`daily-pc-rewards.yml` submits one ARM virtual-device matrix each day at about
-10:05 Beijing time. It authenticates through GitHub OIDC, builds token-free
-fixtures, reads the current `x / y` progress from the app, and plays at most
-nine ads while stopping as soon as the server-provided total is reached. The
-matrix is submitted asynchronously so GitHub Actions does not spend minutes
-waiting for the device. Test Lab infrastructure failures are not retried by
-creating extra matrices on the same day.
+`daily-pc-rewards.yml` starts at about 10:05 Beijing time. It authenticates
+through GitHub OIDC, builds token-free fixtures, reads the current `x / y`
+progress from the app, and plays at most nine ads while stopping as soon as the
+server-provided total is reached. The workflow waits for the matrix result. If
+Test Lab reports an infrastructure failure before the app starts, it retries
+once on a second ARM target that also uses a different Android version. It
+never runs more than two virtual-device matrices in one workflow invocation.
 
 Firebase quotas have two different units:
 
@@ -111,5 +114,6 @@ Firebase quotas have two different units:
   minutes and 30 physical-device minutes per project per day, then charges by
   the minute.
 
-The scheduled workflow is pinned to one Spark ARM virtual device with a
-25-minute timeout and has no physical-device or paid fallback.
+The scheduled workflow uses Spark ARM virtual devices with a 25-minute timeout.
+Its only fallback is another Spark ARM virtual device; there is no physical
+device or paid fallback.

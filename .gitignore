@@ -5,6 +5,8 @@
 node_modules/
 hs_err_pid*.log
 .tmp-run*/
+.tmp-run*-logs.zip
+.tmp-local-*/
 .tmp-apk-fixture/
 .tmp-testlab-*/
 .tmp-ldplayer-*

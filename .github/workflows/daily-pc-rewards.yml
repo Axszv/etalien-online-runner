@@ -30,7 +30,7 @@ env:
 jobs:
   submit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -78,23 +78,13 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Submit one no-cost ARM virtual-device matrix
+      - name: Run PC rewards with one infrastructure fallback
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
           MAX_ADS: ${{ github.event.inputs.max_ads || '9' }}
         shell: bash
         run: |
-          gcloud firebase test android run \
-            --project "$GCP_PROJECT_ID" \
-            --type instrumentation \
-            --app testlab-build/etalien-testlab-signed.apk \
-            --test testlab-build/etalien-cloudtest.apk \
-            --device model=MediumPhone.arm,version=34,locale=zh_CN,orientation=portrait \
-            --timeout 25m \
-            --environment-variables "ETALIEN_TOKEN=$ETALIEN_TOKEN,ETALIEN_DVC=$ETALIEN_DVC,ETALIEN_MAX_ADS=$MAX_ADS" \
-            --results-history-name etalien-daily-pc-rewards \
-            --no-auto-google-login \
-            --no-performance-metrics \
-            --async \
-            --quiet
+          bash scripts/run-testlab-with-fallback.sh \
+            testlab-build/etalien-testlab-signed.apk \
+            testlab-build/etalien-cloudtest.apk
