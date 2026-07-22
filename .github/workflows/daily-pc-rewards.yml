@@ -1,0 +1,100 @@
+name: etalien-daily-pc-rewards
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_ads:
+        description: Maximum rewarded ads to play
+        required: true
+        default: "9"
+        type: choice
+        options:
+          - "1"
+          - "9"
+  schedule:
+    - cron: "5 2 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: etalien-daily-pc-rewards
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: etalien-spark-runner-20260721
+  GCP_WORKLOAD_IDENTITY_PROVIDER: projects/794398120804/locations/global/workloadIdentityPools/github-actions/providers/etalien-repo
+  GCP_SERVICE_ACCOUNT: etalien-testlab-runner@etalien-spark-runner-20260721.iam.gserviceaccount.com
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required session secrets
+        env:
+          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
+          ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
+        shell: bash
+        run: |
+          if [[ -z "$ETALIEN_TOKEN" || -z "$ETALIEN_DVC" ]]; then
+            echo "ETALIEN_TOKEN and ETALIEN_DVC must be configured."
+            exit 1
+          fi
+
+      - name: Download private APK fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          gh release download android-fixture-v3.13.10 \
+            --pattern android_ETAPP_v3.13.10_.apk \
+            --dir artifacts
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build Test Lab fixtures
+        shell: bash
+        run: |
+          bash scripts/build-testlab-fixtures.sh \
+            artifacts/android_ETAPP_v3.13.10_.apk \
+            testlab-build
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Submit one no-cost ARM virtual-device matrix
+        env:
+          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
+          ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
+          MAX_ADS: ${{ github.event.inputs.max_ads || '9' }}
+        shell: bash
+        run: |
+          gcloud firebase test android run \
+            --project "$GCP_PROJECT_ID" \
+            --type instrumentation \
+            --app testlab-build/etalien-testlab-signed.apk \
+            --test testlab-build/etalien-cloudtest.apk \
+            --device model=MediumPhone.arm,version=34,locale=zh_CN,orientation=portrait \
+            --timeout 25m \
+            --environment-variables "ETALIEN_TOKEN=$ETALIEN_TOKEN,ETALIEN_DVC=$ETALIEN_DVC,ETALIEN_MAX_ADS=$MAX_ADS" \
+            --results-history-name etalien-daily-pc-rewards \
+            --no-auto-google-login \
+            --no-performance-metrics \
+            --async \
+            --quiet

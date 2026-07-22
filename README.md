@@ -81,7 +81,35 @@ advertising identity, and SDK adapter environment.
 
 `build-testlab-fixtures.yml` is manual and only builds two token-free APKs for
 a Firebase Test Lab physical-device probe. It does not submit a test matrix.
-Run physical-device experiments only in a Firebase Spark project that is not
-linked to Cloud Billing. A Blaze project has 30 physical-device minutes and
-60 virtual-device minutes per project per day before paid per-minute usage;
-those are aggregate daily allowances, not allowances for every test run.
+Run experiments only in the dedicated Firebase Spark project that is not
+linked to Cloud Billing.
+
+The Test Lab ARM virtual model `MediumPhone.arm` on Android 34 can start the
+app and play a real rewarded video from an overseas cloud network. One
+completed probe displayed a 4399 Game Box video and returned to the PC reward
+page. Its observed `2 / 9` to `3 / 9` transition overlapped with an LDPlayer
+test on the same account, so that run alone does not isolate which device
+credited the reward. Later isolation attempts were stopped by Test Lab with
+`Internal System Error 3` before device logs were produced.
+
+`daily-pc-rewards.yml` submits one ARM virtual-device matrix each day at about
+10:05 Beijing time. It authenticates through GitHub OIDC, builds token-free
+fixtures, reads the current `x / y` progress from the app, and plays at most
+nine ads while stopping as soon as the server-provided total is reached. The
+matrix is submitted asynchronously so GitHub Actions does not spend minutes
+waiting for the device. Test Lab infrastructure failures are not retried by
+creating extra matrices on the same day.
+
+Firebase quotas have two different units:
+
+- Spark is limited by test-run count per project per day: 10 virtual-device
+  runs and 5 physical-device runs.
+- One Android test execution can be configured for up to 60 minutes on a
+  virtual device or 45 minutes on a physical device. The CLI default is 15
+  minutes.
+- Blaze instead includes an aggregate no-cost allowance of 60 virtual-device
+  minutes and 30 physical-device minutes per project per day, then charges by
+  the minute.
+
+The scheduled workflow is pinned to one Spark ARM virtual device with a
+25-minute timeout and has no physical-device or paid fallback.
