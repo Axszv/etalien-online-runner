@@ -79,10 +79,9 @@ if [[ -n "${ETALIEN_DVC:-}" ]]; then
   adb shell settings put secure android_id "$android_id" > /dev/null 2>&1 || true
 fi
 
-# Keep ADB available to the runner while presenting normal user-facing flags
-# to SDKs that inspect Settings.Global.
+# Keep ADB available because the runner still needs it for UI automation and
+# diagnostics. Disabling Settings.Global.adb_enabled disconnects this device.
 adb shell settings put global development_settings_enabled 0 > /dev/null 2>&1 || true
-adb shell settings put global adb_enabled 0 > /dev/null 2>&1 || true
 adb shell setprop persist.sys.timezone Asia/Shanghai > /dev/null 2>&1 || true
 adb shell setprop gsm.sim.operator.numeric 46000 > /dev/null 2>&1 || true
 adb shell setprop gsm.operator.numeric 46000 > /dev/null 2>&1 || true
