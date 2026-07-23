@@ -6,12 +6,33 @@ mkdir -p "$out"
 
 adb wait-for-device
 adb root > "$out/device-profile-adb-root.txt" 2>&1 || true
-adb wait-for-device
 
-# Emulator -writable-system exposes an overlayfs mount. Replace the product
-# identity in every available build.prop source, then reboot so read-only
-# `ro.*` properties are loaded by init instead of attempting a runtime setprop.
+wait_boot() {
+  adb wait-for-device > /dev/null 2>&1 || true
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    state="$(adb get-state 2>/dev/null | tr -d '\r' || true)"
+    boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+    if [[ "$state" == "device" && "$boot" == "1" ]]; then
+      return 0
+    fi
+    sleep 3
+  done
+  echo "ADB did not reach a fully booted device" >&2
+  return 1
+}
+
+wait_boot
+
+# Emulator -writable-system exposes an overlayfs mount. The first remount only
+# enables the overlay and requires a reboot; the second remount makes the
+# overlay writable so build.prop edits can be persisted for the next boot.
 adb remount > "$out/device-profile-remount.txt" 2>&1 || true
+adb reboot > "$out/device-profile-overlay-reboot.txt" 2>&1 || true
+wait_boot
+adb root > "$out/device-profile-adb-root-second.txt" 2>&1 || true
+wait_boot
+adb remount > "$out/device-profile-remount-second.txt" 2>&1 || true
+
 set_prop() {
   local key="$1"
   local value="$2"
@@ -48,11 +69,7 @@ set_prop ro.build.tags release-keys
 set_prop ro.build.fingerprint REDMI/onyx/onyx:14/UP1A.231005.007/20260723:user/release-keys
 
 adb reboot > "$out/device-profile-reboot.txt" 2>&1 || true
-adb wait-for-device
-for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]] && break
-  sleep 3
-done
+wait_boot
 
 # Mirror LDPlayer's configurable identity surface without committing private
 # telephony identifiers. The account's existing device secret supplies a
