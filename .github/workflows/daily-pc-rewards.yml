@@ -11,9 +11,6 @@ on:
         options:
           - "1"
           - "9"
-  schedule:
-    # 12:30 Asia/Shanghai; avoid GitHub's busiest top-of-hour window.
-    - cron: "30 4 * * *"
 
 permissions:
   contents: read

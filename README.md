@@ -111,13 +111,12 @@ provisioning error was reproduced on `MediumPhone.arm` Android 34 and
 `SmallPhone.arm` Android 34/33, so it is not tied to one virtual model, Android
 version, account session, ad network, or runner action.
 
-`daily-pc-rewards.yml` is scheduled for 12:30 Beijing time (UTC 04:30). GitHub's
-private-repository scheduler has delivered the existing inspector schedule
-about three hours late, so the displayed cron time is a target rather than a
-hard start time. It authenticates through GitHub OIDC, builds token-free
-fixtures, reads the current `x / y` progress from the app, and plays at most
-nine ads while stopping as soon as the server-provided total is reached. The
-workflow waits for the matrix result.
+`daily-pc-rewards.yml` is a manual diagnostic workflow. It authenticates
+through GitHub OIDC, builds token-free fixtures, reads the current `x / y`
+progress from the app, and attempts at most the selected number of ads while
+stopping as soon as the server-provided total is reached. It has no schedule,
+because the current Test Lab environment does not reliably receive playable ad
+inventory and an unattended run would only consume the daily Spark test quota.
 
 Firebase quotas have two different units:
 
@@ -130,8 +129,8 @@ Firebase quotas have two different units:
   minutes and 30 physical-device minutes per project per day, then charges by
   the minute.
 
-The scheduled workflow uses Spark ARM virtual devices with a 25-minute timeout.
-It submits up to three sequential matrices per invocation: a repeat attempt on
+The manual workflow uses Spark ARM virtual devices with a 25-minute timeout. It
+submits up to three sequential matrices per invocation: a repeat attempt on
 `MediumPhone.arm:34`, then `SmallPhone.arm:33`. A retry starts only after the
 previous matrix has finished with an infrastructure error, and the account is
 never exercised concurrently. Submission logs are uploaded as an Actions
@@ -148,3 +147,10 @@ returned `Internal System Error 3` before the app ran for matrix
 `matrix-1vtyrj5z1fnhi` (`MediumPhone.arm:34`) and the fallback
 `matrix-2bd99let2b5cx` (`SmallPhone.arm:33`). Neither matrix produced app logs or
 changed the PC reward progress.
+
+Manual run `29999330538` reached a real `SmallPhone.arm:33` execution after two
+infrastructure failures. The runner waited until the PC reward button became
+ready, but the GDT adapter returned `102006` (`Match no ad`). Progress remained
+`1 / 9`, so this run confirms that sequential provisioning retries work while
+the cloud virtual-device advertising environment still does not reproduce the
+successful LDPlayer result.
