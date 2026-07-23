@@ -52,6 +52,14 @@ public final class Runner extends Instrumentation {
             result.putInt("progress_total", progress.total);
             Log.i(TAG, "PC reward progress before ads: " + progress);
 
+            if (booleanArgument("ETALIEN_DIAGNOSTIC_ONLY", false)) {
+                result.putBoolean("ad_ready", true);
+                result.putInt("progress_after", progress.current);
+                Log.i(TAG, "Diagnostic-only probe confirmed ready ad inventory; no ad was opened");
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+
             while (progress.current < progress.total && adsCompleted < maxAds) {
                 int before = progress.current;
                 Log.i(TAG, "Starting rewarded ad " + (adsCompleted + 1)
@@ -107,6 +115,11 @@ public final class Runner extends Instrumentation {
             throw new IllegalArgumentException(name + " must be between 1 and 20");
         }
         return parsed;
+    }
+
+    private boolean booleanArgument(String name, boolean fallback) {
+        String value = arguments.getString(name, "");
+        return value.isEmpty() ? fallback : Boolean.parseBoolean(value);
     }
 
     private void injectSession(String token, String dvc) throws Exception {

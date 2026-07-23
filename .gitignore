@@ -10,4 +10,10 @@ hs_err_pid*.log
 .tmp-apk-fixture/
 .tmp-testlab-*/
 .tmp-ldplayer-*
+.tmp-dex/
+.tmp-jadx-adcompare/
+.tmp-physical-models.json
+.tmp-physical-probe-build/
+.tmp-ldplayer-adcompare.log
+hs_err_pid*.log
 testlab-build/

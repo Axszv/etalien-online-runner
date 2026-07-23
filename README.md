@@ -154,3 +154,11 @@ ready, but the GDT adapter returned `102006` (`Match no ad`). Progress remained
 `1 / 9`, so this run confirms that sequential provisioning retries work while
 the cloud virtual-device advertising environment still does not reproduce the
 successful LDPlayer result.
+
+The successful/failed environment comparison is recorded in
+`docs/ad-environment-comparison.md`. The evidence shows that the ad SDKs use an
+encrypted multi-signal device fingerprint and inspect emulator/attestation
+surfaces beyond `Build.MODEL` or OAID, so further `build.prop` spoofing is not a
+useful experiment. `physical-arm-inventory-probe.yml` is the manual, no-billing
+next step: it checks whether one real OPPO ARM device receives inventory and
+exits before opening an ad.
