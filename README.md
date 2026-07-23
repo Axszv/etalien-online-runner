@@ -111,7 +111,10 @@ provisioning error was reproduced on `MediumPhone.arm` Android 34 and
 `SmallPhone.arm` Android 34/33, so it is not tied to one virtual model, Android
 version, account session, ad network, or runner action.
 
-`daily-pc-rewards.yml` starts at about 10:05 Beijing time. It authenticates
+`daily-pc-rewards.yml` is scheduled for 12:30 Beijing time (UTC 04:30). GitHub's
+private-repository scheduler has delivered the existing inspector schedule
+about three hours late, so the displayed cron time is a target rather than a
+hard start time. It authenticates
 through GitHub OIDC, builds token-free fixtures, reads the current `x / y`
 progress from the app, and plays at most nine ads while stopping as soon as the
 server-provided total is reached. The workflow waits for the matrix result. If
@@ -133,3 +136,9 @@ Firebase quotas have two different units:
 The scheduled workflow uses Spark ARM virtual devices with a 25-minute timeout.
 Its only fallback is another Spark ARM virtual device; there is no physical
 device or paid fallback.
+
+Manual run `29980240645` on 2026-07-23 submitted both ARM targets. Test Lab
+returned `Internal System Error 3` before the app ran for matrix
+`matrix-1vtyrj5z1fnhi` (`MediumPhone.arm:34`) and the fallback
+`matrix-2bd99let2b5cx` (`SmallPhone.arm:33`). Neither matrix produced app logs or
+changed the PC reward progress.
