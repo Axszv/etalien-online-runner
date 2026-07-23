@@ -31,7 +31,7 @@ env:
 jobs:
   submit:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -79,13 +79,24 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Run PC rewards with one infrastructure fallback
+      - name: Run PC rewards with sequential ARM retries
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
           MAX_ADS: ${{ github.event.inputs.max_ads || '9' }}
+          ETALIEN_MAX_MATRICES: "3"
+          ETALIEN_MATRIX_RETRY_DELAY_SECONDS: "45"
         shell: bash
         run: |
           bash scripts/run-testlab-with-fallback.sh \
             testlab-build/etalien-testlab-signed.apk \
             testlab-build/etalien-cloudtest.apk
+
+      - name: Upload Test Lab submission logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etalien-testlab-submissions-${{ github.run_id }}
+          path: testlab-build/submit-*.log
+          if-no-files-found: ignore
+          retention-days: 14

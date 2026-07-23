@@ -5,6 +5,7 @@ import android.app.Instrumentation;
 import android.app.UiAutomation;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
@@ -37,6 +38,7 @@ public final class Runner extends Instrumentation {
         Bundle result = new Bundle();
         try {
             automation = getUiAutomation();
+            logDeviceProfile();
             String token = requiredArgument("ETALIEN_TOKEN");
             String dvc = arguments.getString("ETALIEN_DVC", "");
             injectSession(token, dvc);
@@ -54,6 +56,8 @@ public final class Runner extends Instrumentation {
                 int before = progress.current;
                 Log.i(TAG, "Starting rewarded ad " + (adsCompleted + 1)
                     + ", current progress: " + progress);
+                String buttonText = waitForAdButtonReady(120_000);
+                Log.i(TAG, "Rewarded ad button is ready: " + buttonText);
                 clickById("UIADSubmit", 20_000);
                 boolean adOpened = waitForAdToOpen(50_000);
                 result.putBoolean("ad_opened", adOpened);
@@ -71,7 +75,7 @@ public final class Runner extends Instrumentation {
                 progress = after;
                 if (progress.current < progress.total && adsCompleted < maxAds) {
                     sleep(3_000);
-                    waitForAnyId("UIADSubmit", 20_000);
+                    waitForAdButtonReady(120_000);
                 }
             }
             result.putInt("ads_completed", adsCompleted);
@@ -132,8 +136,44 @@ public final class Runner extends Instrumentation {
         }
         clickById("UISwitch", 20_000);
         waitForAnyId("UIPCDurationCard", 20_000);
-        waitForAnyId("UIADSubmit", 20_000);
+        waitForAdButtonReady(120_000);
         Log.i(TAG, "PC reward page opened");
+    }
+
+    private String waitForAdButtonReady(long timeoutMs) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        String lastText = "";
+        while (System.currentTimeMillis() < deadline) {
+            AccessibilityNodeInfo node = findById("UIADSubmitText");
+            if (node != null && node.getText() != null) {
+                lastText = node.getText().toString().trim();
+                if (lastText.contains("\u770b\u5e7f\u544a")
+                    && !lastText.contains("\u52a0\u8f7d")
+                    && !lastText.contains("\u7a0d\u7b49")) {
+                    return lastText;
+                }
+            }
+            sleep(1_000);
+        }
+        throw new IllegalStateException(
+            "Timed out waiting for a ready ad button; last text=" + lastText);
+    }
+
+    private void logDeviceProfile() throws Exception {
+        Log.i(TAG, "Device profile: model=" + Build.MODEL
+            + ", manufacturer=" + Build.MANUFACTURER
+            + ", brand=" + Build.BRAND
+            + ", device=" + Build.DEVICE
+            + ", product=" + Build.PRODUCT
+            + ", hardware=" + Build.HARDWARE
+            + ", type=" + Build.TYPE
+            + ", tags=" + Build.TAGS
+            + ", supportedAbis=" + java.util.Arrays.toString(Build.SUPPORTED_ABIS));
+        Log.i(TAG, "Device properties: " + shell(
+            "getprop ro.build.characteristics; "
+                + "getprop ro.kernel.qemu; "
+                + "getprop ro.dalvik.vm.native.bridge; "
+                + "getprop ro.build.fingerprint").replace('\n', '|'));
     }
 
     private boolean waitForAdToOpen(long timeoutMs) throws Exception {

@@ -114,13 +114,10 @@ version, account session, ad network, or runner action.
 `daily-pc-rewards.yml` is scheduled for 12:30 Beijing time (UTC 04:30). GitHub's
 private-repository scheduler has delivered the existing inspector schedule
 about three hours late, so the displayed cron time is a target rather than a
-hard start time. It authenticates
-through GitHub OIDC, builds token-free fixtures, reads the current `x / y`
-progress from the app, and plays at most nine ads while stopping as soon as the
-server-provided total is reached. The workflow waits for the matrix result. If
-Test Lab reports an infrastructure failure before the app starts, it retries
-once on a second ARM target that also uses a different Android version. It
-never runs more than two virtual-device matrices in one workflow invocation.
+hard start time. It authenticates through GitHub OIDC, builds token-free
+fixtures, reads the current `x / y` progress from the app, and plays at most
+nine ads while stopping as soon as the server-provided total is reached. The
+workflow waits for the matrix result.
 
 Firebase quotas have two different units:
 
@@ -134,8 +131,17 @@ Firebase quotas have two different units:
   the minute.
 
 The scheduled workflow uses Spark ARM virtual devices with a 25-minute timeout.
-Its only fallback is another Spark ARM virtual device; there is no physical
-device or paid fallback.
+It submits up to three sequential matrices per invocation: a repeat attempt on
+`MediumPhone.arm:34`, then `SmallPhone.arm:33`. A retry starts only after the
+previous matrix has finished with an infrastructure error, and the account is
+never exercised concurrently. Submission logs are uploaded as an Actions
+artifact. There is no physical-device or paid fallback.
+
+The instrumentation runner waits for the PC ad button text to change from
+`广告加载中，请稍等` to a ready `看广告...` state before clicking. It also logs
+the effective Android model, hardware, ABI, native bridge, QEMU flag, and build
+fingerprint in the Test Lab execution output. This avoids counting a visible but
+not-yet-ready button as an ad attempt.
 
 Manual run `29980240645` on 2026-07-23 submitted both ARM targets. Test Lab
 returned `Internal System Error 3` before the app ran for matrix

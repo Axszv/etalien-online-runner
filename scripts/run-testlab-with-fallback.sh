@@ -10,12 +10,15 @@ test_apk="${2:?test APK path is required}"
 max_ads="${MAX_ADS:-9}"
 wait_seconds="${ETALIEN_MATRIX_WAIT_SECONDS:-1500}"
 poll_seconds="${ETALIEN_MATRIX_POLL_SECONDS:-20}"
+retry_delay_seconds="${ETALIEN_MATRIX_RETRY_DELAY_SECONDS:-45}"
+max_matrices="${ETALIEN_MAX_MATRICES:-3}"
 history_name="${ETALIEN_RESULTS_HISTORY:-etalien-daily-pc-rewards}"
 
-# Keep the daily run bounded to two Spark virtual-device tests. The second
-# target differs in both virtual hardware and Android version, and is used only
-# after Test Lab reports an infrastructure failure before the app can run.
+# ARM provisioning errors are transient. Keep attempts sequential so the same
+# account never has two active matrices, and stay below Spark's ten virtual
+# device runs/day quota even when the first target is temporarily unavailable.
 targets=(
+  "MediumPhone.arm:34"
   "MediumPhone.arm:34"
   "SmallPhone.arm:33"
 )
@@ -107,6 +110,9 @@ wait_for_matrix() {
 }
 
 for index in "${!targets[@]}"; do
+  if (( index >= max_matrices )); then
+    break
+  fi
   attempt=$((index + 1))
   target="${targets[$index]}"
   echo "Submitting Spark ARM matrix attempt $attempt/${#targets[@]} on $target"
@@ -126,7 +132,8 @@ for index in "${!targets[@]}"; do
   fi
 
   if [[ "$result" == 10 && "$attempt" -lt "${#targets[@]}" ]]; then
-    echo "Retrying once on the fallback ARM target."
+    echo "Waiting ${retry_delay_seconds}s before the next ARM matrix."
+    sleep "$retry_delay_seconds"
     continue
   fi
 
