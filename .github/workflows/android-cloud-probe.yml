@@ -50,15 +50,9 @@ jobs:
           disable-linux-hw-accel: auto
           disable-animations: true
           emulator-options: >-
-            -no-window -noaudio -no-boot-anim
+            -no-window -noaudio -no-boot-anim -writable-system
             -gpu swiftshader_indirect
             -camera-back none -camera-front none
-            -prop ro.product.model=25060RK16C
-            -prop ro.product.manufacturer=REDMI
-            -prop ro.product.brand=REDMI
-            -prop ro.product.name=onyx
-            -prop ro.product.device=onyx
-            -prop ro.build.characteristics=default
           script: |
             bash scripts/configure-ldplayer-like-device.sh diagnostics
             bash scripts/android-cloud-probe.sh artifacts/android_ETAPP_v3.13.10_.apk diagnostics

@@ -8,6 +8,52 @@ adb wait-for-device
 adb root > "$out/device-profile-adb-root.txt" 2>&1 || true
 adb wait-for-device
 
+# Emulator -writable-system exposes an overlayfs mount. Replace the product
+# identity in every available build.prop source, then reboot so read-only
+# `ro.*` properties are loaded by init instead of attempting a runtime setprop.
+adb remount > "$out/device-profile-remount.txt" 2>&1 || true
+set_prop() {
+  local key="$1"
+  local value="$2"
+  for file in /system/build.prop /system_ext/build.prop /product/build.prop \
+    /vendor/build.prop /odm/build.prop; do
+    adb shell "if [ -f '$file' ]; then sed -i 's|^$key=.*|$key=$value|' '$file'; grep -q '^$key=' '$file' || echo '$key=$value' >> '$file'; fi" \
+      > /dev/null 2>&1 || true
+  done
+}
+
+set_prop ro.product.model 25060RK16C
+set_prop ro.product.manufacturer REDMI
+set_prop ro.product.brand REDMI
+set_prop ro.product.name onyx
+set_prop ro.product.device onyx
+set_prop ro.product.product.model 25060RK16C
+set_prop ro.product.product.manufacturer REDMI
+set_prop ro.product.product.brand REDMI
+set_prop ro.product.product.name onyx
+set_prop ro.product.product.device onyx
+set_prop ro.product.system.model 25060RK16C
+set_prop ro.product.system.manufacturer REDMI
+set_prop ro.product.system.brand REDMI
+set_prop ro.product.system.name onyx
+set_prop ro.product.system.device onyx
+set_prop ro.product.vendor.model 25060RK16C
+set_prop ro.product.vendor.manufacturer REDMI
+set_prop ro.product.vendor.brand REDMI
+set_prop ro.product.vendor.name onyx
+set_prop ro.product.vendor.device onyx
+set_prop ro.build.characteristics default
+set_prop ro.build.type user
+set_prop ro.build.tags release-keys
+set_prop ro.build.fingerprint REDMI/onyx/onyx:14/UP1A.231005.007/20260723:user/release-keys
+
+adb reboot > "$out/device-profile-reboot.txt" 2>&1 || true
+adb wait-for-device
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]] && break
+  sleep 3
+done
+
 # Mirror LDPlayer's configurable identity surface without committing private
 # telephony identifiers. The account's existing device secret supplies a
 # stable Android ID for this isolated probe.
@@ -30,20 +76,25 @@ adb shell setprop gsm.operator.alpha 'China Mobile' > /dev/null 2>&1 || true
 adb emu gsm data home > /dev/null 2>&1 || true
 adb emu gsm voice home > /dev/null 2>&1 || true
 
+adb shell getprop | tr -d '\r' > "$out/effective-getprop.txt"
+get_prop() {
+  local key="$1"
+  sed -n "s/^\\[$key\\]: \\[\\(.*\\)\\]$/\\1/p" "$out/effective-getprop.txt" | head -n 1
+}
 {
-  echo "model=$(adb shell getprop ro.product.model | tr -d '\r')"
-  echo "manufacturer=$(adb shell getprop ro.product.manufacturer | tr -d '\r')"
-  echo "brand=$(adb shell getprop ro.product.brand | tr -d '\r')"
-  echo "device=$(adb shell getprop ro.product.device | tr -d '\r')"
-  echo "build_type=$(adb shell getprop ro.build.type | tr -d '\r')"
-  echo "build_tags=$(adb shell getprop ro.build.tags | tr -d '\r')"
-  echo "characteristics=$(adb shell getprop ro.build.characteristics | tr -d '\r')"
-  echo "hardware=$(adb shell getprop ro.hardware | tr -d '\r')"
-  echo "kernel_qemu=$(adb shell getprop ro.kernel.qemu | tr -d '\r')"
-  echo "abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
-  echo "native_bridge=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
-  echo "sim_operator=$(adb shell getprop gsm.sim.operator.numeric | tr -d '\r')"
-  echo "timezone=$(adb shell getprop persist.sys.timezone | tr -d '\r')"
+  echo "model=$(get_prop ro.product.model)"
+  echo "manufacturer=$(get_prop ro.product.manufacturer)"
+  echo "brand=$(get_prop ro.product.brand)"
+  echo "device=$(get_prop ro.product.device)"
+  echo "build_type=$(get_prop ro.build.type)"
+  echo "build_tags=$(get_prop ro.build.tags)"
+  echo "characteristics=$(get_prop ro.build.characteristics)"
+  echo "hardware=$(get_prop ro.hardware)"
+  echo "kernel_qemu=$(get_prop ro.kernel.qemu)"
+  echo "abi=$(get_prop ro.product.cpu.abi)"
+  echo "native_bridge=$(get_prop ro.dalvik.vm.native.bridge)"
+  echo "sim_operator=$(get_prop gsm.sim.operator.numeric)"
+  echo "timezone=$(get_prop persist.sys.timezone)"
   echo "android_id_configured=$([[ -n "${ETALIEN_DVC:-}" ]] && echo true || echo false)"
   echo "developer_settings=$(adb shell settings get global development_settings_enabled | tr -d '\r')"
   echo "adb_setting=$(adb shell settings get global adb_enabled | tr -d '\r')"

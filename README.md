@@ -77,10 +77,14 @@ minutes. A mainland egress is therefore not a hard requirement. V2rayN's
 bypass-mainland mode can still produce a DNS failure for
 `amdcopen.m.umeng.com`, but it did not prevent the observed ad reward. The
 stronger remaining difference is the GitHub emulator's virtual hardware,
-advertising identity, and SDK adapter environment.
+advertising identity, and SDK adapter environment. A first profile-spoof probe
+confirmed that emulator `-prop ro.product.*` flags are ignored by the Android
+34 image: the effective device remained `sdk_gphone64_x86_64` and the ad SDK
+returned `80100`.
 
 The manual `android-cloud-probe.yml` experiment now uses Android 34 and applies
-the configurable identity surface observed in LDPlayer: a REDMI model, stable
+the configurable identity surface observed in LDPlayer through a writable
+system overlay and reboot: a REDMI model, stable
 Android ID, mainland SIM/operator properties, China timezone-facing settings,
 and disabled developer/ADB setting flags. It records the effective properties
 as well as PC progress before and after the ad attempt. This changes the
