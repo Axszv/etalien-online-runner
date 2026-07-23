@@ -84,13 +84,16 @@ returned `80100`.
 
 The manual `android-cloud-probe.yml` experiment now uses Android 34 and applies
 the configurable identity surface observed in LDPlayer through a writable
-system overlay and reboot: a REDMI model, stable
-Android ID, mainland SIM/operator properties, China timezone-facing settings,
-and disabled developer/ADB setting flags. It records the effective properties
-as well as PC progress before and after the ad attempt. This changes the
-SDK-visible phone profile but intentionally leaves the x86_64 ABI,
-`libndk_translation`, and underlying `ranchu/qemu` hardware intact so the test
-can show whether model/profile spoofing alone changes ad inventory.
+system overlay and two reboots. Run `29971063316` confirmed that the effective
+model, manufacturer, brand, device, build type, and build tags changed to
+`25060RK16C`, `REDMI`, `REDMI`, `onyx`, `user`, and `release-keys`. The runner
+keeps ADB enabled for UI automation and diagnostics. The same run still exposed
+`ro.build.characteristics=emulator`, `ro.hardware=ranchu`,
+`ro.kernel.qemu=1`, `x86_64`, and `libndk_translation.so`. The rewarded-ad
+button remained at `Advertising loading` after 72 seconds and PC progress stayed
+at `0 / 9`. This isolates model/profile spoofing as insufficient; the remaining
+material differences are the ABI/native bridge, virtual hardware, and
+attestation or advertising identity surfaces.
 
 `build-testlab-fixtures.yml` is manual and only builds two token-free APKs for
 a Firebase Test Lab physical-device probe. It does not submit a test matrix.
