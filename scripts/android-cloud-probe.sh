@@ -55,6 +55,22 @@ capture_ui() {
   local name="$1"
   local attempt
   rm -f "$out/$name.xml"
+
+  # A writable-system reboot can briefly make SystemUI report an ANR while
+  # the app itself is already rendered underneath it. Dismiss the transient
+  # dialog so it does not swallow the scripted navigation taps.
+  for attempt in 1 2 3; do
+    adb shell rm -f /sdcard/system-dialog.xml > /dev/null 2>&1 || true
+    adb shell uiautomator dump /sdcard/system-dialog.xml > /dev/null 2>&1 || true
+    adb pull /sdcard/system-dialog.xml "$out/system-dialog.xml" > /dev/null 2>&1 || true
+    if grep -q 'android:id/aerr_wait' "$out/system-dialog.xml" 2>/dev/null; then
+      adb shell input tap 540 1277 > /dev/null 2>&1 || true
+      sleep 5
+    else
+      break
+    fi
+  done
+
   for attempt in 1 2 3; do
     adb shell rm -f "/sdcard/$name.xml" > /dev/null 2>&1 || true
     adb shell uiautomator dump "/sdcard/$name.xml" \
