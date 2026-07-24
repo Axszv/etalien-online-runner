@@ -77,7 +77,7 @@ jobs:
             exit 1
           fi
 
-      - name: Probe rewarded-ad inventory on one physical ARM device
+      - name: Probe rewarded-ad inventory on one stable physical ARM device
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
@@ -88,7 +88,7 @@ jobs:
             --type instrumentation \
             --app testlab-build/etalien-testlab-signed.apk \
             --test testlab-build/etalien-cloudtest.apk \
-            --device model=OP573DL1,version=34,locale=zh_CN,orientation=portrait \
+            --device model=redfin,version=30,locale=zh_CN,orientation=portrait \
             --timeout 12m \
             --environment-variables \
               "ETALIEN_TOKEN=$ETALIEN_TOKEN,ETALIEN_DVC=$ETALIEN_DVC,ETALIEN_DIAGNOSTIC_ONLY=true" \

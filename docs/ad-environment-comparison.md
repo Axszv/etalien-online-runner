@@ -49,8 +49,9 @@ decision rule.
 
 ## Next execution target
 
-`physical-arm-inventory-probe.yml` uses one Firebase Test Lab physical OPPO A79
-5G (`OP573DL1`, Android 14) and exits after the PC ad button becomes ready. It
+`physical-arm-inventory-probe.yml` uses one Firebase Test Lab physical Pixel 5
+(`redfin`, Android 11), the catalog's stable `default` physical device, and exits
+after the PC ad button becomes ready. It
 does not open the ad or change reward progress. The workflow is manual-only,
 submits one device, and aborts before submission if Cloud Billing is enabled.
 
