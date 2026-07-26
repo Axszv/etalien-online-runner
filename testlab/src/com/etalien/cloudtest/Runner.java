@@ -1,13 +1,12 @@
 package com.etalien.cloudtest;
 
-import android.app.Activity;
-import android.app.Instrumentation;
 import android.app.UiAutomation;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.test.InstrumentationTestRunner;
 import android.util.Log;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -17,7 +16,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class Runner extends Instrumentation {
+public final class Runner extends InstrumentationTestRunner {
     private static final String TAG = "ETAlienCloudTest";
     private static final String PACKAGE = "com.etalien.booster";
     private static final String PREFIX = PACKAGE + ":id/";
@@ -28,13 +27,11 @@ public final class Runner extends Instrumentation {
 
     @Override
     public void onCreate(Bundle arguments) {
-        super.onCreate(arguments);
         this.arguments = arguments;
-        start();
+        super.onCreate(arguments);
     }
 
-    @Override
-    public void onStart() {
+    void runProbe() throws Throwable {
         Bundle result = new Bundle();
         try {
             automation = getUiAutomation();
@@ -56,7 +53,6 @@ public final class Runner extends Instrumentation {
                 result.putBoolean("ad_ready", true);
                 result.putInt("progress_after", progress.current);
                 Log.i(TAG, "Diagnostic-only probe confirmed ready ad inventory; no ad was opened");
-                finish(Activity.RESULT_OK, result);
                 return;
             }
 
@@ -91,11 +87,9 @@ public final class Runner extends Instrumentation {
             result.putInt("progress_total", progress.total);
             Log.i(TAG, "PC reward run finished after " + adsCompleted
                 + " ad(s), final progress: " + progress);
-            finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {
             Log.e(TAG, "Physical-device probe failed: " + error.getMessage(), error);
-            result.putString("error", error.toString());
-            finish(Activity.RESULT_CANCELED, result);
+            throw error;
         }
     }
 

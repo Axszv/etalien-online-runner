@@ -2,7 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.etalien.cloudtest">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28" />
-    <application android:label="ETAlien Cloud Test" />
+    <application android:label="ETAlien Cloud Test">
+        <uses-library android:name="android.test.runner" />
+    </application>
     <instrumentation
         android:name="com.etalien.cloudtest.Runner"
         android:functionalTest="true"

@@ -9,7 +9,8 @@ out="$(cd "$out" && pwd)"
 
 build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
 android_jar="$(find "$ANDROID_HOME/platforms" -mindepth 2 -maxdepth 2 -name android.jar | sort -V | tail -n 1)"
-if [[ -z "$build_tools" || -z "$android_jar" ]]; then
+test_runner_jar="$(dirname "$android_jar")/optional/android.test.runner.jar"
+if [[ -z "$build_tools" || -z "$android_jar" || ! -f "$test_runner_jar" ]]; then
   echo "Android build tools and a platform SDK are required" >&2
   exit 1
 fi
@@ -38,10 +39,12 @@ keytool -genkeypair -noprompt \
 classes="$out/test-classes"
 mkdir -p "$classes" "$out/test-dex"
 javac -source 8 -target 8 -encoding UTF-8 \
-  -classpath "$android_jar" -d "$classes" \
-  "$root/testlab/src/com/etalien/cloudtest/Runner.java"
+  -classpath "$android_jar:$test_runner_jar" -d "$classes" \
+  "$root/testlab/src/com/etalien/cloudtest/Runner.java" \
+  "$root/testlab/src/com/etalien/cloudtest/ProbeTest.java"
 mapfile -t class_files < <(find "$classes" -type f -name '*.class')
-"$build_tools/d8" --lib "$android_jar" --output "$out/test-dex" "${class_files[@]}"
+"$build_tools/d8" --lib "$android_jar" --lib "$test_runner_jar" \
+  --output "$out/test-dex" "${class_files[@]}"
 "$build_tools/aapt2" link \
   -I "$android_jar" --manifest "$root/testlab/AndroidManifest.xml" \
   --min-sdk-version 26 --target-sdk-version 28 \
