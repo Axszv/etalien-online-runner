@@ -54,6 +54,9 @@ decision rule.
 after the PC ad button becomes ready. It
 does not open the ad or change reward progress. The workflow is manual-only,
 submits one device, and aborts before submission if Cloud Billing is enabled.
+Its `original-apk-smoke` mode runs a two-minute Robo smoke test against the
+unmodified APK to distinguish Test Lab infrastructure and installation failures
+from failures introduced by the debuggable, re-signed instrumentation fixture.
 
 If this probe reports `ad_ready=true`, a separate one-ad callback probe can test
 rendering and reward progression without conflating inventory selection with

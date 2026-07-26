@@ -2,6 +2,15 @@ name: etalien-physical-arm-inventory-probe
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Physical-device probe to run
+        required: true
+        default: inventory
+        type: choice
+        options:
+          - inventory
+          - original-apk-smoke
 
 permissions:
   contents: read
@@ -45,11 +54,13 @@ jobs:
             --dir artifacts
 
       - uses: actions/setup-java@v4
+        if: inputs.mode == 'inventory'
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Build Test Lab fixtures
+        if: inputs.mode == 'inventory'
         shell: bash
         run: |
           bash scripts/build-testlab-fixtures.sh \
@@ -77,7 +88,22 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke-test the unmodified APK on one stable physical ARM device
+        if: inputs.mode == 'original-apk-smoke'
+        shell: bash
+        run: |
+          gcloud firebase test android run \
+            --project "$GCP_PROJECT_ID" \
+            --type robo \
+            --app artifacts/android_ETAPP_v3.13.10_.apk \
+            --device model=redfin,version=30,locale=zh_CN,orientation=portrait \
+            --timeout 2m \
+            --no-auto-google-login \
+            --no-performance-metrics \
+            --quiet 2>&1 | tee artifacts/physical-smoke.log
+
       - name: Probe rewarded-ad inventory on one stable physical ARM device
+        if: inputs.mode == 'inventory'
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
@@ -102,7 +128,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: etalien-physical-arm-inventory-probe-${{ github.run_id }}
-          path: testlab-build/physical-probe.log
+          name: etalien-physical-arm-${{ inputs.mode }}-${{ github.run_id }}
+          path: |
+            artifacts/physical-smoke.log
+            testlab-build/physical-probe.log
           if-no-files-found: ignore
           retention-days: 14
