@@ -11,6 +11,7 @@ on:
         options:
           - inventory
           - original-apk-smoke
+          - resigned-apk-smoke
 
 permissions:
   contents: read
@@ -54,13 +55,13 @@ jobs:
             --dir artifacts
 
       - uses: actions/setup-java@v4
-        if: inputs.mode == 'inventory'
+        if: inputs.mode != 'original-apk-smoke'
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Build Test Lab fixtures
-        if: inputs.mode == 'inventory'
+        if: inputs.mode != 'original-apk-smoke'
         shell: bash
         run: |
           bash scripts/build-testlab-fixtures.sh \
@@ -102,6 +103,20 @@ jobs:
             --no-performance-metrics \
             --quiet 2>&1 | tee artifacts/physical-smoke.log
 
+      - name: Smoke-test the re-signed APK without instrumentation
+        if: inputs.mode == 'resigned-apk-smoke'
+        shell: bash
+        run: |
+          gcloud firebase test android run \
+            --project "$GCP_PROJECT_ID" \
+            --type robo \
+            --app testlab-build/etalien-testlab-signed.apk \
+            --device model=redfin,version=30,locale=zh_CN,orientation=portrait \
+            --timeout 2m \
+            --no-auto-google-login \
+            --no-performance-metrics \
+            --quiet 2>&1 | tee testlab-build/resigned-physical-smoke.log
+
       - name: Probe rewarded-ad inventory on one stable physical ARM device
         if: inputs.mode == 'inventory'
         env:
@@ -132,5 +147,6 @@ jobs:
           path: |
             artifacts/physical-smoke.log
             testlab-build/physical-probe.log
+            testlab-build/resigned-physical-smoke.log
           if-no-files-found: ignore
           retention-days: 14

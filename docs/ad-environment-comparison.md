@@ -57,6 +57,8 @@ submits one device, and aborts before submission if Cloud Billing is enabled.
 Its `original-apk-smoke` mode runs a two-minute Robo smoke test against the
 unmodified APK to distinguish Test Lab infrastructure and installation failures
 from failures introduced by the debuggable, re-signed instrumentation fixture.
+The `resigned-apk-smoke` mode runs the re-signed target with Robo but omits the
+custom instrumentation APK, separating target re-signing from runner failures.
 
 If this probe reports `ad_ready=true`, a separate one-ad callback probe can test
 rendering and reward progression without conflating inventory selection with
