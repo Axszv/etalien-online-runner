@@ -10,6 +10,8 @@ import android.test.InstrumentationTestRunner;
 import android.util.Log;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import junit.framework.TestSuite;
+
 import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -29,6 +31,16 @@ public final class Runner extends InstrumentationTestRunner {
     public void onCreate(Bundle arguments) {
         this.arguments = arguments;
         super.onCreate(arguments);
+    }
+
+    @Override
+    public TestSuite getAllTests() {
+        return new TestSuite(ProbeTest.class);
+    }
+
+    @Override
+    public ClassLoader getLoader() {
+        return Runner.class.getClassLoader();
     }
 
     void runProbe() throws Throwable {
