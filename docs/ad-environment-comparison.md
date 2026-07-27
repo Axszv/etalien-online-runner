@@ -64,3 +64,22 @@ If this probe reports `ad_ready=true`, a separate one-ad callback probe can test
 rendering and reward progression without conflating inventory selection with
 the reward callback. If it remains in the loading state, the cloud network or
 Test Lab device policy is the remaining blocker rather than emulator identity.
+
+## Physical-device results
+
+The physical execution path is now verified on the Pixel 5:
+
+- Run `30187383814`: the unmodified APK passed a two-minute Robo smoke test.
+- Run `30187596321`: the debuggable, re-signed APK also passed Robo, proving
+  that re-signing and native ARM compatibility were not the infrastructure
+  failure.
+- Run `30187954535`: the first legacy instrumentation runner reached the device
+  but timed out while scanning all seven target APK dex files for tests.
+- Run `30229056065`: an explicitly registered single-test suite passed on the
+  physical device. The injected session opened the PC reward page, reported
+  progress `0/9`, and logged a ready rewarded-ad button.
+
+The successful device profile was a production Pixel 5 (`user/release-keys`,
+native `arm64-v8a`). Octopus, GDT, and Kuaishou SDK initialization appeared in
+logcat before `ad_ready=true`. The inventory probe did not open an ad or change
+reward progress.
