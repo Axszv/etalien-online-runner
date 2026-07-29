@@ -12,13 +12,18 @@ adb_run() {
   timeout --foreground --kill-after=10s 90s adb "$@"
 }
 
+adb_quick() {
+  timeout --foreground --kill-after=2s 5s adb "$@"
+}
+
 adb_run connect 127.0.0.1:5555 | tee "$out/adb-connect.txt"
-for attempt in $(seq 1 90); do
-  if adb_run -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null \
+for attempt in $(seq 1 36); do
+  echo "boot_attempt=$attempt" | tee -a "$out/boot-progress.txt"
+  if adb_quick -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null \
       | tr -d '\r' | grep -q '^1$'; then
     break
   fi
-  if [[ "$attempt" == "90" ]]; then
+  if [[ "$attempt" == "36" ]]; then
     echo "Redroid did not finish booting" >&2
     exit 2
   fi
