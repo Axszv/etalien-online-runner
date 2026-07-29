@@ -81,6 +81,7 @@ jobs:
             ro.product.manufacturer=REDMI
 
       - name: Probe the mobile reward page
+        timeout-minutes: 8
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
