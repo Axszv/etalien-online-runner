@@ -80,8 +80,11 @@ jobs:
             ro.product.brand=REDMI \
             ro.product.manufacturer=REDMI
 
+      - name: Wait for Android inside Redroid
+        shell: bash
+        run: bash scripts/redroid-container-probe.sh diagnostics
+
       - name: Probe the mobile reward page
-        timeout-minutes: 8
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
@@ -91,14 +94,22 @@ jobs:
             echo "ETALIEN_TOKEN and ETALIEN_DVC must be configured."
             exit 1
           fi
-          bash scripts/redroid-mobile-probe.sh \
+          set +e
+          timeout --kill-after=15s 7m bash scripts/redroid-mobile-probe.sh \
             artifacts/android_ETAPP_v3.13.10_.apk \
             diagnostics
+          probe_code=$?
+          pkill -9 adb || true
+          exit "$probe_code"
 
       - name: Collect Redroid logs
         if: always()
         shell: bash
-        run: docker logs redroid > diagnostics/redroid.log 2>&1 || true
+        run: |
+          docker ps -a --no-trunc > diagnostics/docker-ps.txt 2>&1 || true
+          docker inspect redroid > diagnostics/redroid-inspect.json 2>&1 || true
+          docker logs --timestamps redroid > diagnostics/redroid.log 2>&1 || true
+          sudo dmesg --ctime | tail -n 2000 > diagnostics/dmesg.txt 2>&1 || true
 
       - name: Upload probe evidence
         if: always()

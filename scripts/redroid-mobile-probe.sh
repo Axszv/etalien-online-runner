@@ -17,18 +17,11 @@ adb_quick() {
 }
 
 adb_run connect 127.0.0.1:5555 | tee "$out/adb-connect.txt"
-for attempt in $(seq 1 36); do
-  echo "boot_attempt=$attempt" | tee -a "$out/boot-progress.txt"
-  if adb_quick -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null \
-      | tr -d '\r' | grep -q '^1$'; then
-    break
-  fi
-  if [[ "$attempt" == "36" ]]; then
-    echo "Redroid did not finish booting" >&2
-    exit 2
-  fi
-  sleep 2
-done
+if ! adb_quick -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null \
+    | tr -d '\r' | grep -q '^1$'; then
+  echo "Redroid preflight passed, but Android is unavailable over ADB" >&2
+  exit 2
+fi
 
 export ANDROID_SERIAL=127.0.0.1:5555
 adb_run shell getprop > "$out/getprop.txt"
