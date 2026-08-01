@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y adb gcc jq linux-libc-dev
+          sudo apt-get install -y adb jq
           uname -a | tee diagnostics/host.txt
           lscpu | tee -a diagnostics/host.txt
           docker version | tee diagnostics/docker-version.txt
@@ -40,30 +40,16 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+          if ! sudo modprobe binder_linux; then
             sudo apt-get install -y "linux-modules-extra-$(uname -r)" || true
-            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+            sudo modprobe binder_linux
           fi
-          sudo mkdir -p /dev/binderfs
-          if ! mountpoint -q /dev/binderfs; then
-            sudo mount -t binder binder /dev/binderfs
-          fi
-          gcc -O2 -Wall -Wextra scripts/setup-binderfs.c -o /tmp/setup-binderfs
-          for device in binder hwbinder vndbinder; do
-            if [[ ! -e "/dev/binderfs/$device" ]]; then
-              sudo /tmp/setup-binderfs /dev/binderfs/binder-control "$device"
-            fi
-          done
-          sudo chmod 666 \
-            /dev/binderfs/binder \
-            /dev/binderfs/hwbinder \
-            /dev/binderfs/vndbinder
           {
             modinfo binder_linux || true
             find /sys/module/binder_linux/parameters -maxdepth 1 -type f \
               -exec sh -c 'printf "%s=" "$1"; cat "$1"' sh {} \; || true
-            mount | grep binder || true
-            ls -la /dev/binderfs
+            grep -E 'CONFIG_ANDROID_BINDER_(IPC|DEVICES)|CONFIG_ANDROID_BINDERFS' \
+              "/boot/config-$(uname -r)" || true
           } | tee diagnostics/binder.txt
 
       - name: Start native ARM64 Redroid
@@ -72,9 +58,6 @@ jobs:
           docker pull redroid/redroid:12.0.0_64only-latest
           docker run -d --name redroid --privileged \
             -p 5555:5555 \
-            --device /dev/binderfs/binder:/dev/binder \
-            --device /dev/binderfs/hwbinder:/dev/hwbinder \
-            --device /dev/binderfs/vndbinder:/dev/vndbinder \
             redroid/redroid:12.0.0_64only-latest \
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2280 \
