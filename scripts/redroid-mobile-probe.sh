@@ -4,6 +4,7 @@ set -euo pipefail
 apk="${1:?APK path is required}"
 out="${2:-diagnostics}"
 package_name="com.etalien.booster"
+container="redroid"
 mkdir -p "$out"
 
 # A stalled ADB transport must fail the probe and leave the always-run log
@@ -36,7 +37,8 @@ adb_run shell getprop > "$out/getprop.txt"
 
 adb_run install -r "$apk" | tee "$out/install.txt"
 adb_run logcat -c
-adb_run shell monkey -p "$package_name" -c android.intent.category.LAUNCHER 1 \
+adb_run shell am start -W -n \
+  "$package_name/com.etalien.booster.p755ui.SplashActivity" \
   > "$out/launch.txt" 2>&1 || true
 sleep 15
 
@@ -56,18 +58,19 @@ if grep -q 'id/UIConfirm' "$out/screen-initial.xml" 2>/dev/null; then
 fi
 
 node scripts/create-android-session-prefs.mjs /tmp/spUtils.xml
-adb_run push /tmp/spUtils.xml /data/local/tmp/spUtils.xml >/dev/null
 app_data="/data/user/0/$package_name"
-uid="$(adb_run shell stat -c '%u' "$app_data" | tr -d '\r')"
+uid="$(docker exec "$container" stat -c '%u' "$app_data" | tr -d '\r')"
 adb_run shell am force-stop "$package_name"
-adb_run shell mkdir -p "$app_data/shared_prefs"
-adb_run shell cp /data/local/tmp/spUtils.xml "$app_data/shared_prefs/spUtils.xml"
-adb_run shell chown "$uid:$uid" "$app_data/shared_prefs/spUtils.xml"
-adb_run shell chmod 660 "$app_data/shared_prefs/spUtils.xml"
+docker exec "$container" mkdir -p "$app_data/shared_prefs"
+docker cp /tmp/spUtils.xml \
+  "$container:$app_data/shared_prefs/spUtils.xml" >/dev/null
+docker exec "$container" chown "$uid:$uid" \
+  "$app_data/shared_prefs/spUtils.xml"
+docker exec "$container" chmod 660 "$app_data/shared_prefs/spUtils.xml"
 
 set +e
-adb_run shell am start -W -n \
-  "$package_name/com.etalien.booster.ui.MobleADTaskListAndProductActivity" \
+docker exec "$container" /system/bin/am start -W -n \
+  "$package_name/com.etalien.booster.p755ui.MobleADTaskListAndProductActivity" \
   > "$out/start-mobile-activity.txt" 2>&1
 start_code=$?
 set -e
