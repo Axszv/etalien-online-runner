@@ -2,6 +2,15 @@ name: etalien-arm64-redroid-probe
 
 on:
   workflow_dispatch:
+    inputs:
+      reward_attempts:
+        description: Number of genuine mobile rewarded ads to attempt
+        required: true
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
 
 permissions:
   contents: read
@@ -75,6 +84,7 @@ jobs:
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
+          ETALIEN_AD_ATTEMPTS: ${{ inputs.reward_attempts }}
         shell: bash
         run: |
           if [[ -z "$ETALIEN_TOKEN" || -z "$ETALIEN_DVC" ]]; then
