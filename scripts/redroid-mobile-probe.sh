@@ -38,7 +38,7 @@ adb_run shell getprop > "$out/getprop.txt"
 adb_run install -r "$apk" | tee "$out/install.txt"
 adb_run logcat -c
 adb_run shell am start -W -n \
-  "$package_name/com.etalien.booster.p755ui.SplashActivity" \
+  "$package_name/com.etalien.booster.ui.SplashActivity" \
   > "$out/launch.txt" 2>&1 || true
 sleep 15
 
@@ -61,16 +61,17 @@ node scripts/create-android-session-prefs.mjs /tmp/spUtils.xml
 app_data="/data/user/0/$package_name"
 uid="$(docker exec "$container" stat -c '%u' "$app_data" | tr -d '\r')"
 adb_run shell am force-stop "$package_name"
+adb_run push /tmp/spUtils.xml /data/local/tmp/spUtils.xml >/dev/null
 docker exec "$container" mkdir -p "$app_data/shared_prefs"
-docker cp /tmp/spUtils.xml \
-  "$container:$app_data/shared_prefs/spUtils.xml" >/dev/null
+docker exec "$container" cp /data/local/tmp/spUtils.xml \
+  "$app_data/shared_prefs/spUtils.xml"
 docker exec "$container" chown "$uid:$uid" \
   "$app_data/shared_prefs/spUtils.xml"
 docker exec "$container" chmod 660 "$app_data/shared_prefs/spUtils.xml"
 
 set +e
 docker exec "$container" /system/bin/am start -W -n \
-  "$package_name/com.etalien.booster.p755ui.MobleADTaskListAndProductActivity" \
+  "$package_name/com.etalien.booster.ui.MobleADTaskListAndProductActivity" \
   > "$out/start-mobile-activity.txt" 2>&1
 start_code=$?
 set -e
