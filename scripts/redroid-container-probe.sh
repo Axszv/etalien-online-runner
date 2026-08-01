@@ -5,6 +5,10 @@ out="${1:-diagnostics}"
 container="redroid"
 mkdir -p "$out"
 
+timeout --kill-after=2s 10s docker exec "$container" \
+  /system/bin/ls -l /dev/binder /dev/hwbinder /dev/vndbinder \
+  > "$out/container-binder-devices.txt" 2>&1 || true
+
 for attempt in $(seq 1 24); do
   running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
   boot_completed=""

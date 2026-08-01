@@ -54,6 +54,10 @@ jobs:
               sudo /tmp/setup-binderfs /dev/binderfs/binder-control "$device"
             fi
           done
+          sudo chmod 666 \
+            /dev/binderfs/binder \
+            /dev/binderfs/hwbinder \
+            /dev/binderfs/vndbinder
           {
             modinfo binder_linux || true
             find /sys/module/binder_linux/parameters -maxdepth 1 -type f \
@@ -109,6 +113,12 @@ jobs:
           docker ps -a --no-trunc > diagnostics/docker-ps.txt 2>&1 || true
           docker inspect redroid > diagnostics/redroid-inspect.json 2>&1 || true
           docker logs --timestamps redroid > diagnostics/redroid.log 2>&1 || true
+          timeout --kill-after=2s 15s docker exec redroid \
+            /system/bin/logcat -b all -d \
+            > diagnostics/container-logcat.txt 2>&1 || true
+          mkdir -p diagnostics/tombstones
+          docker cp redroid:/data/tombstones/. diagnostics/tombstones/ \
+            > diagnostics/tombstones-copy.txt 2>&1 || true
           sudo dmesg --ctime | tail -n 2000 > diagnostics/dmesg.txt 2>&1 || true
 
       - name: Upload probe evidence
