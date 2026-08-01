@@ -5,6 +5,7 @@ apk="${1:?APK path is required}"
 out="${2:-diagnostics}"
 package_name="com.etalien.booster"
 container="redroid"
+ad_attempts="${ETALIEN_AD_ATTEMPTS:-0}"
 mkdir -p "$out"
 
 # A stalled ADB transport must fail the probe and leave the always-run log
@@ -86,14 +87,60 @@ fi
 
 sleep 90
 capture_ui screen-mobile-reward
+node src/cli.mjs inspect | tee "$out/activity-before.json"
+before_count="$(node -e \
+  'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).userWatchCnt)' \
+  "$out/activity-before.json")"
+
+reward_verified="false"
+after_count="$before_count"
+if (( ad_attempts > 0 )); then
+  adb_run shell svc power stayon true >/dev/null 2>&1 || true
+  adb_run shell input tap 540 746
+  sleep 15
+  capture_ui screen-ad-started
+  sleep 60
+  capture_ui screen-ad-finished
+  adb_run shell input keyevent 4 || true
+
+  for poll in $(seq 1 6); do
+    sleep 10
+    after_file="$out/activity-after-$poll.json"
+    node src/cli.mjs inspect | tee "$after_file"
+    after_count="$(node -e \
+      'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).userWatchCnt)' \
+      "$after_file")"
+    if (( after_count > before_count )); then
+      reward_verified="true"
+      break
+    fi
+  done
+  capture_ui screen-after-reward
+fi
+
 adb_run shell dumpsys activity activities > "$out/activities.txt" || true
 adb_run logcat -d -v threadtime > "$out/logcat.txt" || true
 node -e 'const fs=require("fs"); const p=process.argv[1]; const t=process.env.ETALIEN_TOKEN; const s=fs.readFileSync(p,"utf8"); fs.writeFileSync(p,s.split(t).join("[REDACTED]"));' "$out/logcat.txt"
+
+if (( ad_attempts > 0 )) && [[ "$reward_verified" != "true" ]]; then
+  {
+    echo "mobile_reward_page=true"
+    echo "reward_verified=false"
+    echo "watch_count_before=$before_count"
+    echo "watch_count_after=$after_count"
+  } | tee "$out/probe-status.txt"
+  exit 4
+fi
 
 if grep -q 'id/UIADSubmitText' "$out/screen-mobile-reward.xml" 2>/dev/null; then
   button_text="$(sed -n 's/.*resource-id="com\.etalien\.booster:id\/UIADSubmitText"[^>]*text="\([^"]*\)".*/\1/p' "$out/screen-mobile-reward.xml" | head -n 1)"
   echo "mobile_reward_page=true" | tee "$out/probe-status.txt"
   echo "button_text=$button_text" | tee -a "$out/probe-status.txt"
+  if (( ad_attempts > 0 )); then
+    echo "reward_verified=true" | tee -a "$out/probe-status.txt"
+    echo "watch_count_before=$before_count" | tee -a "$out/probe-status.txt"
+    echo "watch_count_after=$after_count" | tee -a "$out/probe-status.txt"
+  fi
   exit 0
 fi
 
