@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       reward_attempts:
-        description: Number of genuine mobile rewarded ads to attempt
+        description: Number of genuine PC acceleration rewarded ads to attempt
         required: true
         default: "0"
         type: choice
@@ -80,7 +80,7 @@ jobs:
         shell: bash
         run: bash scripts/redroid-container-probe.sh diagnostics
 
-      - name: Probe the mobile reward page
+      - name: Probe the My Games PC reward page
         env:
           ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}

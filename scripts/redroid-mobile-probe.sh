@@ -45,11 +45,73 @@ sleep 15
 
 capture_ui() {
   local name="$1"
-  adb_run shell rm -f "/sdcard/$name.xml" >/dev/null 2>&1 || true
-  adb_run shell uiautomator dump "/sdcard/$name.xml" \
-      > "$out/uiautomator-$name.txt" 2>&1 || true
-  adb_run pull "/sdcard/$name.xml" "$out/$name.xml" >/dev/null 2>&1 || true
+  local attempt
+  rm -f "$out/$name.xml"
+  for attempt in 1 2 3; do
+    adb_run shell rm -f "/sdcard/$name.xml" >/dev/null 2>&1 || true
+    adb_run shell uiautomator dump "/sdcard/$name.xml" \
+        >> "$out/uiautomator-$name.txt" 2>&1 || true
+    adb_run pull "/sdcard/$name.xml" "$out/$name.xml" >/dev/null 2>&1 || true
+    [[ -s "$out/$name.xml" ]] && break
+    sleep 2
+  done
   adb_run exec-out screencap -p > "$out/$name.png" || true
+}
+
+resource_center() {
+  local xml="$1"
+  local id="$2"
+  node - "$xml" "$package_name:id/$id" <<'NODE'
+const fs = require("fs");
+const [file, id] = process.argv.slice(2);
+const source = fs.readFileSync(file, "utf8");
+const tag = source.match(/<node\b[^>]*>/g)?.find((item) =>
+  item.includes(`resource-id="${id}"`));
+const bounds = tag?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+if (!bounds) process.exit(1);
+console.log(`${Math.floor((+bounds[1] + +bounds[3]) / 2)} ${Math.floor((+bounds[2] + +bounds[4]) / 2)}`);
+NODE
+}
+
+tap_resource() {
+  local id="$1"
+  local name="find-$id"
+  local coordinates
+  capture_ui "$name"
+  coordinates="$(resource_center "$out/$name.xml" "$id")" || return 1
+  adb_run shell input tap $coordinates
+}
+
+pc_progress() {
+  local xml="$1"
+  node - "$xml" "$package_name:id/UIStateTitle" <<'NODE'
+const fs = require("fs");
+const [file, id] = process.argv.slice(2);
+const source = fs.readFileSync(file, "utf8");
+const tag = source.match(/<node\b[^>]*>/g)?.find((item) =>
+  item.includes(`resource-id="${id}"`));
+const text = tag?.match(/text="([^"]*)"/)?.[1] || "";
+const progress = text.match(/(\d+)\s*\/\s*(\d+)/);
+if (!progress) process.exit(1);
+console.log(`${progress[1]} ${progress[2]}`);
+NODE
+}
+
+pc_ad_ready() {
+  local xml="$1"
+  node - "$xml" "$package_name:id/UIADSubmitText" <<'NODE'
+const fs = require("fs");
+const [file, id] = process.argv.slice(2);
+const source = fs.readFileSync(file, "utf8");
+const tag = source.match(/<node\b[^>]*>/g)?.find((item) =>
+  item.includes(`resource-id="${id}"`));
+const text = tag?.match(/text="([^"]*)"/)?.[1] || "";
+const ready = text.includes("\u770b\u5e7f\u544a")
+  && !text.includes("\u52a0\u8f7d")
+  && !text.includes("\u7a0d\u7b49");
+if (!ready) process.exit(1);
+console.log(text);
+NODE
 }
 
 capture_ui screen-initial
@@ -70,33 +132,52 @@ docker exec "$container" chown "$uid:$uid" \
   "$app_data/shared_prefs/spUtils.xml"
 docker exec "$container" chmod 660 "$app_data/shared_prefs/spUtils.xml"
 
-set +e
-docker exec "$container" /system/bin/am start -W -n \
-  "$package_name/com.etalien.booster.ui.MobleADTaskListAndProductActivity" \
-  > "$out/start-mobile-activity.txt" 2>&1
-start_code=$?
-set -e
-if [[ "$start_code" -ne 0 ]]; then
-  adb_run shell monkey -p "$package_name" -c android.intent.category.LAUNCHER 1 \
-    > "$out/session-launch.txt" 2>&1 || true
-  sleep 15
-  adb_run shell input tap 900 2150
+adb_run shell am start -W -n \
+  "$package_name/com.etalien.booster.ui.SplashActivity" \
+  > "$out/session-launch.txt" 2>&1
+sleep 20
+capture_ui screen-session-main
+
+for attempt in 1 2 3; do
+  if ! grep -q 'id/UISubmit' "$out/screen-session-main.xml" 2>/dev/null; then
+    break
+  fi
+  tap_resource UISubmit || true
+  sleep 3
+  capture_ui screen-session-main
+done
+
+# The target task is under My Games in PC acceleration mode. UISwitch is
+# present only on that page, so use the bottom tab as a fallback when needed.
+if ! tap_resource UISwitch; then
+  adb_run shell input tap 540 2070
   sleep 5
-  adb_run shell input tap 330 430
+  tap_resource UISwitch
 fi
 
-sleep 90
-capture_ui screen-mobile-reward
-node src/cli.mjs inspect | tee "$out/activity-before.json"
-before_count="$(node -e \
-  'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).userWatchCnt)' \
-  "$out/activity-before.json")"
+button_text=""
+for attempt in $(seq 1 24); do
+  sleep 5
+  capture_ui screen-pc-reward
+  if button_text="$(pc_ad_ready "$out/screen-pc-reward.xml")"; then
+    break
+  fi
+done
+
+if [[ -z "$button_text" ]] \
+    || ! grep -q 'id/UIPCDurationCard' "$out/screen-pc-reward.xml" 2>/dev/null; then
+  echo "pc_reward_page=false" | tee "$out/probe-status.txt"
+  exit 3
+fi
+
+read -r before_count total_count \
+  <<< "$(pc_progress "$out/screen-pc-reward.xml")"
 
 reward_verified="false"
 after_count="$before_count"
 if (( ad_attempts > 0 )); then
   adb_run shell svc power stayon true >/dev/null 2>&1 || true
-  adb_run shell input tap 540 746
+  tap_resource UIADSubmit
   sleep 15
   capture_ui screen-ad-started
   sleep 60
@@ -105,17 +186,14 @@ if (( ad_attempts > 0 )); then
 
   for poll in $(seq 1 6); do
     sleep 10
-    after_file="$out/activity-after-$poll.json"
-    node src/cli.mjs inspect | tee "$after_file"
-    after_count="$(node -e \
-      'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).userWatchCnt)' \
-      "$after_file")"
+    capture_ui "screen-pc-after-$poll"
+    read -r after_count after_total \
+      <<< "$(pc_progress "$out/screen-pc-after-$poll.xml" || echo "$before_count $total_count")"
     if (( after_count > before_count )); then
       reward_verified="true"
       break
     fi
   done
-  capture_ui screen-after-reward
 fi
 
 adb_run shell dumpsys activity activities > "$out/activities.txt" || true
@@ -124,25 +202,20 @@ node -e 'const fs=require("fs"); const p=process.argv[1]; const t=process.env.ET
 
 if (( ad_attempts > 0 )) && [[ "$reward_verified" != "true" ]]; then
   {
-    echo "mobile_reward_page=true"
+    echo "pc_reward_page=true"
     echo "reward_verified=false"
-    echo "watch_count_before=$before_count"
-    echo "watch_count_after=$after_count"
+    echo "pc_progress_before=$before_count"
+    echo "pc_progress_after=$after_count"
+    echo "pc_progress_total=$total_count"
   } | tee "$out/probe-status.txt"
   exit 4
 fi
 
-if grep -q 'id/UIADSubmitText' "$out/screen-mobile-reward.xml" 2>/dev/null; then
-  button_text="$(sed -n 's/.*resource-id="com\.etalien\.booster:id\/UIADSubmitText"[^>]*text="\([^"]*\)".*/\1/p' "$out/screen-mobile-reward.xml" | head -n 1)"
-  echo "mobile_reward_page=true" | tee "$out/probe-status.txt"
-  echo "button_text=$button_text" | tee -a "$out/probe-status.txt"
-  if (( ad_attempts > 0 )); then
-    echo "reward_verified=true" | tee -a "$out/probe-status.txt"
-    echo "watch_count_before=$before_count" | tee -a "$out/probe-status.txt"
-    echo "watch_count_after=$after_count" | tee -a "$out/probe-status.txt"
-  fi
-  exit 0
+echo "pc_reward_page=true" | tee "$out/probe-status.txt"
+echo "button_text=$button_text" | tee -a "$out/probe-status.txt"
+echo "pc_progress_before=$before_count" | tee -a "$out/probe-status.txt"
+echo "pc_progress_total=$total_count" | tee -a "$out/probe-status.txt"
+if (( ad_attempts > 0 )); then
+  echo "reward_verified=true" | tee -a "$out/probe-status.txt"
+  echo "pc_progress_after=$after_count" | tee -a "$out/probe-status.txt"
 fi
-
-echo "mobile_reward_page=false" | tee "$out/probe-status.txt"
-exit 3
