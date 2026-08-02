@@ -58,6 +58,15 @@ capture_ui() {
   adb_run exec-out screencap -p > "$out/$name.png" || true
 }
 
+capture_screen() {
+  adb_run exec-out screencap -p > "$out/$1.png" || true
+}
+
+pc_ad_is_open() {
+  adb_quick shell dumpsys activity activities 2>/dev/null \
+    | grep -q 'topResumedActivity=.*KsRewardVideoActivity'
+}
+
 resource_center() {
   local xml="$1"
   local id="$2"
@@ -178,11 +187,49 @@ after_count="$before_count"
 if (( ad_attempts > 0 )); then
   adb_run shell svc power stayon true >/dev/null 2>&1 || true
   tap_resource UIADSubmit
+
+  ad_opened="false"
+  for attempt in $(seq 1 30); do
+    if pc_ad_is_open; then
+      ad_opened="true"
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$ad_opened" != "true" ]]; then
+    echo "PC rewarded ad did not open" >&2
+    exit 5
+  fi
+
+  capture_screen screen-ad-started
   sleep 15
-  capture_ui screen-ad-started
-  sleep 60
-  capture_ui screen-ad-finished
-  adb_run shell input keyevent 4 || true
+  capture_screen screen-ad-15s
+  sleep 30
+  capture_screen screen-ad-45s
+  sleep 30
+  capture_screen screen-ad-finished
+
+  # Kuaishou's completed end card consumes KEYCODE_BACK. Its visible close/
+  # skip control is centered near x=900 on the fixed 1080x2280 surface.
+  for attempt in 1 2 3; do
+    adb_run shell input tap 900 70 || true
+    sleep 5
+    pc_ad_is_open || break
+  done
+
+  if pc_ad_is_open; then
+    adb_run shell am force-stop "$package_name"
+    adb_run shell am start -W -n \
+      "$package_name/com.etalien.booster.ui.SplashActivity" \
+      > "$out/restart-after-ad.txt" 2>&1
+    sleep 15
+    capture_ui screen-restart-after-ad
+    if ! grep -q 'id/UIPCDurationCard' \
+        "$out/screen-restart-after-ad.xml" 2>/dev/null; then
+      tap_resource UISwitch || true
+      sleep 10
+    fi
+  fi
 
   for poll in $(seq 1 6); do
     sleep 10

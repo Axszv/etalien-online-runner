@@ -11,6 +11,23 @@ on:
         options:
           - "0"
           - "1"
+      redroid_image:
+        description: Native ARM64 Redroid image to test
+        required: true
+        default: "redroid/redroid:11.0.0-latest"
+        type: choice
+        options:
+          - "redroid/redroid:11.0.0-latest"
+          - "redroid/redroid:12.0.0_64only-latest"
+          - "redroid/redroid:10.0.0-latest"
+      gpu_mode:
+        description: Redroid graphics backend
+        required: true
+        default: "guest"
+        type: choice
+        options:
+          - "guest"
+          - "auto"
 
 permissions:
   contents: read
@@ -44,6 +61,12 @@ jobs:
           uname -a | tee diagnostics/host.txt
           lscpu | tee -a diagnostics/host.txt
           docker version | tee diagnostics/docker-version.txt
+          {
+            echo "redroid_image=${{ inputs.redroid_image }}"
+            echo "redroid_gpu_mode=${{ inputs.gpu_mode }}"
+            ls -la /dev/dri 2>&1 || true
+            lspci -nnk 2>&1 || true
+          } > diagnostics/host-graphics.txt
 
       - name: Enable Android Binder devices
         shell: bash
@@ -62,16 +85,19 @@ jobs:
           } | tee diagnostics/binder.txt
 
       - name: Start native ARM64 Redroid
+        env:
+          REDROID_IMAGE: ${{ inputs.redroid_image }}
+          REDROID_GPU_MODE: ${{ inputs.gpu_mode }}
         shell: bash
         run: |
-          docker pull redroid/redroid:12.0.0_64only-latest
+          docker pull "$REDROID_IMAGE"
           docker run -d --name redroid --privileged \
             -p 5555:5555 \
-            redroid/redroid:12.0.0_64only-latest \
+            "$REDROID_IMAGE" \
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2280 \
             androidboot.redroid_dpi=420 \
-            androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_gpu_mode="$REDROID_GPU_MODE" \
             ro.product.model=25060RK16C \
             ro.product.brand=REDMI \
             ro.product.manufacturer=REDMI
@@ -92,7 +118,7 @@ jobs:
             exit 1
           fi
           set +e
-          timeout --kill-after=15s 7m bash scripts/redroid-mobile-probe.sh \
+          timeout --kill-after=15s 10m bash scripts/redroid-mobile-probe.sh \
             artifacts/android_ETAPP_v3.13.10_.apk \
             diagnostics
           probe_code=$?
@@ -101,6 +127,8 @@ jobs:
 
       - name: Collect Redroid logs
         if: always()
+        env:
+          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
         shell: bash
         run: |
           docker ps -a --no-trunc > diagnostics/docker-ps.txt 2>&1 || true
@@ -109,10 +137,16 @@ jobs:
           timeout --kill-after=2s 15s docker exec redroid \
             /system/bin/logcat -b all -d \
             > diagnostics/container-logcat.txt 2>&1 || true
+          timeout --kill-after=2s 15s docker exec redroid \
+            /system/bin/dumpsys media.codec \
+            > diagnostics/media-codec.txt 2>&1 || true
           mkdir -p diagnostics/tombstones
           docker cp redroid:/data/tombstones/. diagnostics/tombstones/ \
             > diagnostics/tombstones-copy.txt 2>&1 || true
           sudo dmesg --ctime | tail -n 2000 > diagnostics/dmesg.txt 2>&1 || true
+          if [[ -n "$ETALIEN_TOKEN" ]]; then
+            node -e 'const fs=require("fs"); const p="diagnostics/container-logcat.txt"; if (fs.existsSync(p)) fs.writeFileSync(p,fs.readFileSync(p,"utf8").split(process.env.ETALIEN_TOKEN).join("[REDACTED]"));'
+          fi
 
       - name: Upload probe evidence
         if: always()
