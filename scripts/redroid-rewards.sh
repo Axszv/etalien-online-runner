@@ -476,12 +476,17 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
 
     tap_resource UIADSubmit || true
     ad_opened="false"
-    for attempt in $(seq 1 30); do
+    for attempt in $(seq 1 90); do
       if ad_is_open; then
         ad_opened="true"
         break
       fi
       sleep 2
+      # The SDK sometimes swallows the first tap (no load request in the
+      # logcat after it); re-tap the still-visible button before giving up.
+      if (( attempt == 45 )); then
+        tap_resource UIADSubmit || true
+      fi
     done
     if [[ "$ad_opened" != "true" ]]; then
       consecutive_fail=$((consecutive_fail + 1))
