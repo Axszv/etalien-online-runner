@@ -113,6 +113,23 @@ capture_screen() {
   adb_run exec-out screencap -p > "$out/$1.png" || true
 }
 
+# Close a rewarded-ad overlay and confirm it is actually gone. Blind taps have
+# hit the end-card landing link instead of the close control, so prefer
+# KEYCODE_BACK (Kuaishou's end card consumes it) and only tap the top-right
+# close corner when the overlay is still up afterward.
+close_reward_ad() {
+  local attempt
+  for attempt in 1 2 3; do
+    adb_run shell input keyevent 4 || true
+    sleep 4
+    ad_is_open || return 0
+    adb_run shell input tap 985 88 || true
+    sleep 4
+    ad_is_open || return 0
+  done
+  return 1
+}
+
 resource_center() {
   local xml="$1"
   local id="$2"
@@ -279,11 +296,18 @@ uid="$(docker exec "$container" stat -c '%u' "$app_data" | tr -d '\r')"
 adb_run shell am force-stop "$package_name"
 adb_run push /tmp/spUtils.xml /data/local/tmp/spUtils.xml >/dev/null
 docker exec "$container" mkdir -p "$app_data/shared_prefs"
+# A root-owned shared_prefs directory leaves the app unable to create any pref
+# file: ad SDKs (pangle logged ~1900 "Couldn't create directory" errors) lose
+# their frequency and config persistence and the ad pipeline degrades.
+docker exec "$container" chown "$uid:$uid" "$app_data/shared_prefs"
+docker exec "$container" chmod 770 "$app_data/shared_prefs"
 docker exec "$container" cp /data/local/tmp/spUtils.xml \
   "$app_data/shared_prefs/spUtils.xml"
 docker exec "$container" chown "$uid:$uid" \
   "$app_data/shared_prefs/spUtils.xml"
 docker exec "$container" chmod 660 "$app_data/shared_prefs/spUtils.xml"
+docker exec "$container" /system/bin/restorecon -R \
+  "$app_data/shared_prefs" >/dev/null 2>&1 || true
 
 # --- Protocol phase 0: fail fast on an expired token before spending time
 # --- on any UI work.
@@ -341,15 +365,7 @@ if (( mobile_planned > 0 )); then
     capture_screen "screen-mobile-ad-started-$round"
     sleep 60
     capture_screen "screen-mobile-ad-finished-$round"
-    adb_run shell input keyevent 4 || true
-    sleep 5
-    if ad_is_open; then
-      for attempt in 1 2 3; do
-        adb_run shell input tap 900 70 || true
-        sleep 5
-        ad_is_open || break
-      done
-    fi
+    close_reward_ad || true
 
     verified="false"
     for poll in $(seq 1 9); do
@@ -508,16 +524,7 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
     sleep 30
     capture_screen "screen-pc-ad-finished-$round"
 
-    # Kuaishou's completed end card consumes KEYCODE_BACK. Its visible close/
-    # skip control is centered near x=900 on the fixed 1080x2280 surface.
-    for attempt in 1 2 3; do
-      adb_run shell input tap 900 70 || true
-      sleep 5
-      ad_is_open || break
-    done
-    if ad_is_open; then
-      return_to_pc_page
-    fi
+    close_reward_ad || true
 
     verified="false"
     for poll in $(seq 1 6); do
@@ -547,7 +554,6 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
         echo "PC phase gave up after unverified rounds" | tee -a "$out/probe-status.txt"
         break
       fi
-      return_to_pc_page
     fi
   done
 fi
