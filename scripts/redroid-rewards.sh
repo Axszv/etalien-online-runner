@@ -180,32 +180,36 @@ enter_mobile_page() {
   fi
 }
 
-# The server may serve an update dialog (UISubmit=立即更新, UIClose=×) that
-# would otherwise hijack the UISubmit privacy tap and open the system
-# installer. Close it first, then cancel any Play Protect install dialog.
+# Startup dialogs share resource ids with real page controls, so each is
+# identified by its neighbors before tapping: the update dialog pairs
+# UISubmit=立即更新 with UIClose; a bare UISubmit (我知道了) is a notice
+# whose only safe action is itself; the installer security dialog is
+# identified by its package and cancelled; UIConfirm is the privacy prompt.
 dismiss_startup_dialogs() {
-  for attempt in 1 2 3; do
-    if tap_resource UIClose; then
-      sleep 3
-      capture_ui screen-pc-entry
-    fi
+  for attempt in 1 2 3 4; do
+    capture_ui screen-pc-entry
     if grep -q 'package="com.android.packageinstaller"' \
         "$out/screen-pc-entry.xml" 2>/dev/null; then
       adb_run shell input tap 235 1460 || true
       sleep 3
-      capture_ui screen-pc-entry
+      continue
+    fi
+    if grep -q 'id/UIClose' "$out/screen-pc-entry.xml" 2>/dev/null; then
+      tap_resource UIClose || true
+      sleep 3
+      continue
     fi
     if grep -q 'id/UIConfirm' "$out/screen-pc-entry.xml" 2>/dev/null; then
       tap_resource UIConfirm || true
       sleep 5
-      capture_ui screen-pc-entry
+      continue
     fi
-    if ! grep -q 'id/UISubmit' "$out/screen-pc-entry.xml" 2>/dev/null \
-        && ! grep -q 'package="com.android.packageinstaller"' \
-            "$out/screen-pc-entry.xml" 2>/dev/null; then
-      break
+    if grep -q 'id/UISubmit' "$out/screen-pc-entry.xml" 2>/dev/null; then
+      tap_resource UISubmit || true
+      sleep 3
+      continue
     fi
-    sleep 2
+    break
   done
 }
 
