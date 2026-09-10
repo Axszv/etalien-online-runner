@@ -180,20 +180,42 @@ enter_mobile_page() {
   fi
 }
 
+# The server may serve an update dialog (UISubmit=立即更新, UIClose=×) that
+# would otherwise hijack the UISubmit privacy tap and open the system
+# installer. Close it first, then cancel any Play Protect install dialog.
+dismiss_startup_dialogs() {
+  for attempt in 1 2 3; do
+    if tap_resource UIClose; then
+      sleep 3
+      capture_ui screen-pc-entry
+    fi
+    if grep -q 'package="com.android.packageinstaller"' \
+        "$out/screen-pc-entry.xml" 2>/dev/null; then
+      adb_run shell input tap 235 1460 || true
+      sleep 3
+      capture_ui screen-pc-entry
+    fi
+    if grep -q 'id/UIConfirm' "$out/screen-pc-entry.xml" 2>/dev/null; then
+      tap_resource UIConfirm || true
+      sleep 5
+      capture_ui screen-pc-entry
+    fi
+    if ! grep -q 'id/UISubmit' "$out/screen-pc-entry.xml" 2>/dev/null \
+        && ! grep -q 'package="com.android.packageinstaller"' \
+            "$out/screen-pc-entry.xml" 2>/dev/null; then
+      break
+    fi
+    sleep 2
+  done
+}
+
 # Bring the app back to the main page and switch to the PC acceleration card.
 return_to_pc_page() {
   adb_run shell am force-stop "$package_name" || true
   adb_run shell am start -W -n "$splash_activity" > "$out/pc-launch.txt" 2>&1 || true
   sleep 20
   capture_ui screen-pc-entry
-  for attempt in 1 2 3; do
-    if ! grep -q 'id/UISubmit' "$out/screen-pc-entry.xml" 2>/dev/null; then
-      break
-    fi
-    tap_resource UISubmit || true
-    sleep 3
-    capture_ui screen-pc-entry
-  done
+  dismiss_startup_dialogs
   if ! tap_resource UISwitch; then
     adb_run shell input tap 540 2070 || true
     sleep 5
@@ -235,6 +257,11 @@ adb_run install -r "$apk" | tee "$out/install.txt"
 adb_run logcat -c
 
 capture_ui screen-initial
+if grep -q 'id/UIClose' "$out/screen-initial.xml" 2>/dev/null; then
+  tap_resource UIClose || true
+  sleep 5
+  capture_ui screen-initial
+fi
 if grep -q 'id/UIConfirm' "$out/screen-initial.xml" 2>/dev/null; then
   adb_run shell input tap 717 1484
   sleep 15
