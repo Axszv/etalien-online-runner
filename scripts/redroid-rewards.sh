@@ -81,12 +81,14 @@ protocol_value() {
 ad_is_open() {
   local dump
   dump="$(adb_quick shell dumpsys activity activities 2>/dev/null || true)"
-  if grep -q 'topResumedActivity=.*KsRewardVideoActivity' <<<"$dump"; then
+  # Android 12's Redroid dumpsys has no topResumedActivity field; the resumed
+  # activity surfaces as mResumedActivity/ResumedActivity instead.
+  if grep -Eq 'topResumedActivity=.*KsRewardVideoActivity|mResumedActivity:.*KsRewardVideoActivity|ResumedActivity:.*KsRewardVideoActivity' <<<"$dump"; then
     return 0
   fi
   # Non-Kuaishou rewarded activities (GDT/Octopus naming variants) so a PC
   # slot served by another adapter is not misread as "did not open".
-  if grep -Eqi 'topResumedActivity=.*reward' <<<"$dump"; then
+  if grep -Eqi 'topResumedActivity=.*reward|mResumedActivity:.*reward|ResumedActivity:.*reward' <<<"$dump"; then
     return 0
   fi
   return 1
