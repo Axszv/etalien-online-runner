@@ -74,6 +74,7 @@ jobs:
       - name: Install native ARM host tools
         shell: bash
         run: |
+          mkdir -p diagnostics
           sudo apt-get update
           sudo apt-get install -y adb jq
           uname -a | tee diagnostics/host.txt
