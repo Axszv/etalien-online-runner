@@ -184,10 +184,15 @@ pc_progress() {
 const fs = require("fs");
 const [file, id] = process.argv.slice(2);
 const source = fs.readFileSync(file, "utf8");
-const tag = source.match(/<node\b[^>]*>/g)?.find((item) =>
-  item.includes(`resource-id="${id}"`));
-const text = tag?.match(/text="([^"]*)"/)?.[1] || "";
-const progress = text.match(/(\d+)\s*\/\s*(\d+)/);
+// The PC ladder has three stages stacked on one page. A finished stage shows
+// "已完成", a locked one "待解锁"; skip both so the count tracks the active
+// stage (e.g. stage 1's 9-slot ladder, then stage 2's 0/3 after unlock).
+const texts = (source.match(/<node\b[^>]*>/g) || [])
+  .filter((item) => item.includes(`resource-id="${id}"`))
+  .map((item) => item.match(/text="([^"]*)"/)?.[1] || "");
+const progress = texts
+  .map((text) => text.match(/(\d+)\s*\/\s*(\d+)/))
+  .find(Boolean);
 if (!progress) process.exit(1);
 console.log(`${progress[1]} ${progress[2]}`);
 NODE
