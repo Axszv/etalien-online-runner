@@ -486,8 +486,15 @@ done
 
 if [[ -z "$button_text" ]] \
     || ! grep -q 'id/UIPCDurationCard' "$out/screen-pc-reward.xml" 2>/dev/null; then
-  echo "pc_reward_page=false" | tee -a "$out/probe-status.txt"
-  exit 3
+  # A fully-claimed ladder hides the ad button (the card shows 今日广告已看完);
+  # that is success, not an unreachable page. Only a missing duration card
+  # means the page itself never loaded.
+  if grep -q 'id/UIPCDurationCard' "$out/screen-pc-reward.xml" 2>/dev/null; then
+    echo "pc_reward_page=true (no ad button; ladder likely complete)" | tee -a "$out/probe-status.txt"
+  else
+    echo "pc_reward_page=false" | tee -a "$out/probe-status.txt"
+    exit 3
+  fi
 fi
 pc_page_reached="true"
 pc_chain_complete="false"
