@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # ETAlien rewarded-ad runner: watches the mobile reward ladder and the
 # My Games PC acceleration ladder inside Redroid, verifying every reward
-# through the server protocol instead of trusting UI text.
+# through the server protocol instead of trusting UI text. A single run is
+# expected to finish every unclaimed reward of the day: failures cool down
+# and retry, and the PC ladder is followed across its staged unlock chain.
 #
 # Env:
 #   ETALIEN_MOBILE_ADS  max mobile ads to watch (0 = skip mobile)
@@ -10,6 +12,7 @@
 # Exit codes:
 #   0 all planned rewards verified; 1 rounds exhausted with rewards left;
 #   2 ADB preflight failed; 3 PC reward page unreachable; 6 protocol/token error
+set -euo pipefail
 set -euo pipefail
 
 apk="${1:?APK path is required}"
@@ -184,17 +187,25 @@ pc_progress() {
 const fs = require("fs");
 const [file, id] = process.argv.slice(2);
 const source = fs.readFileSync(file, "utf8");
-// The PC ladder has three stages stacked on one page. A finished stage shows
-// "已完成", a locked one "待解锁"; skip both so the count tracks the active
-// stage (e.g. stage 1's 9-slot ladder, then stage 2's 0/3 after unlock).
+// The PC ladder is a chain of stages on one page. Each stage shows a
+// UIStateTitle: "已完成" (done), "N / M" (active), "待解锁" (locked). Report
+// the active stage, or when everything is done report the last stage as
+// completed so the caller can distinguish finished from unstarted.
 const texts = (source.match(/<node\b[^>]*>/g) || [])
   .filter((item) => item.includes(`resource-id="${id}"`))
   .map((item) => item.match(/text="([^"]*)"/)?.[1] || "");
-const progress = texts
+const active = texts
   .map((text) => text.match(/(\d+)\s*\/\s*(\d+)/))
   .find(Boolean);
-if (!progress) process.exit(1);
-console.log(`${progress[1]} ${progress[2]}`);
+if (active) {
+  console.log(`${active[1]} ${active[2]}`);
+  process.exit(0);
+}
+if (texts.includes("已完成")) {
+  console.log("done done");
+  process.exit(0);
+}
+process.exit(1);
 NODE
 }
 
@@ -213,6 +224,15 @@ const ready = text.includes("看广告")
 if (!ready) process.exit(1);
 console.log(text);
 NODE
+}
+
+# Cooldown between attempts after a failure: the ad SDK's fill is time-based
+# (an immediate re-tap usually gets the same no-fill), while waiting a few
+# minutes has repeatedly recovered on the next try.
+fail_cooldown() {
+  local seconds="$1"
+  echo "cooling down ${seconds}s before retry" | tee -a "$out/probe-status.txt"
+  sleep "$seconds"
 }
 
 enter_mobile_page() {
@@ -370,12 +390,22 @@ if (( mobile_planned > 0 )); then
   sleep 90
   capture_ui screen-mobile-reward
 
+  # One run must claim everything, so there is no give-up threshold here:
+  # failed rounds cool down and retry until the ladder is done or the time
+  # budget runs out. Failures are usually the SDK's no-fill, which is
+  # time-based — an immediate re-tap repeats it, waiting does not.
   consecutive_fail=0
-  rounds=$((mobile_planned + 2))
-  for round in $(seq 1 "$rounds"); do
+  round=0
+  while (( mobile_ok < mobile_planned )); do
+    round=$((round + 1))
     if ! time_left; then
       echo "time budget exhausted before mobile round $round" | tee -a "$out/probe-status.txt"
       break
+    fi
+    if (( consecutive_fail >= 3 )); then
+      fail_cooldown 300
+      consecutive_fail=1
+      if ! time_left; then break; fi
     fi
     if ! protocol_snapshot "$out/activity-before-$round.json"; then
       echo "mobile_round=$round protocol poll failed" | tee -a "$out/probe-status.txt"
@@ -417,10 +447,6 @@ if (( mobile_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "mobile_round=$round NOT verified (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "mobile-fail-$round"
-      if (( consecutive_fail >= 2 )); then
-        echo "mobile phase gave up after consecutive failures" | tee -a "$out/probe-status.txt"
-        break
-      fi
       adb_run shell am force-stop "$package_name" || true
       enter_mobile_page "restart-mobile-$round.txt"
       sleep 30
@@ -464,11 +490,20 @@ if [[ -z "$button_text" ]] \
   exit 3
 fi
 pc_page_reached="true"
-read -r pc_before pc_total <<< "$(pc_progress "$out/screen-pc-reward.xml" || echo "")"
-pc_before="${pc_before:-0}"
-pc_total="${pc_total:-0}"
+pc_chain_complete="false"
+pc_progress_start="?"
+progress_raw="$(pc_progress "$out/screen-pc-reward.xml" || echo "")"
+if [[ -n "$progress_raw" ]]; then pc_progress_start="$progress_raw"; fi
+if [[ "$progress_raw" == "done done" ]]; then
+  pc_chain_complete="true"
+  echo "pc_start chain already complete" | tee -a "$out/probe-status.txt"
+else
+  read -r pc_before pc_total <<< "$progress_raw"
+  pc_before="${pc_before:-0}"
+  pc_total="${pc_total:-0}"
+fi
 
-if [[ "$pc_watch_enabled" == "true" ]]; then
+if [[ "$pc_watch_enabled" == "true" && "$pc_chain_complete" != "true" ]]; then
   remaining_pc=$((pc_total - pc_before))
   if (( remaining_pc < 0 )); then remaining_pc=0; fi
   pc_planned=$remaining_pc
@@ -480,23 +515,74 @@ fi
 
 if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
   adb_run shell svc power stayon true >/dev/null 2>&1 || true
+  # A single run claims the whole staged chain: watch the active stage until
+  # it completes, wait out the next stage's unlock, and keep going. Failures
+  # cool down instead of aborting — SDK no-fill is time-based, so retries
+  # after a pause repeatedly succeed where an immediate re-tap repeats it.
   consecutive_fail=0
-  rounds=$((pc_planned + 2))
-  for round in $(seq 1 "$rounds"); do
-    if ! time_left; then
-      echo "time budget exhausted before PC round $round" | tee -a "$out/probe-status.txt"
+  rounds_used=0
+  max_rounds=$((pc_ads + 20))
+  while (( pc_planned > 0 )); do
+    rounds_used=$((rounds_used + 1))
+    if (( rounds_used > max_rounds )) || ! time_left; then
+      echo "PC phase stopping (rounds=$rounds_used, time_left=$(time_left && echo yes || echo no))" | tee -a "$out/probe-status.txt"
       break
     fi
+    if (( consecutive_fail >= 3 )); then
+      fail_cooldown 300
+      consecutive_fail=1
+      if ! time_left; then break; fi
+    fi
+    round=$rounds_used
     capture_ui "screen-pc-round-$round"
     fresh="$(pc_progress "$out/screen-pc-round-$round.xml" || echo "")"
+    if [[ "$fresh" == "done done" ]]; then
+      echo "PC chain complete at round $round" | tee -a "$out/probe-status.txt"
+      pc_chain_complete="true"
+      break
+    fi
     if [[ -n "$fresh" ]]; then
       read -r pc_before pc_total <<< "$fresh"
       pc_before="${pc_before:-0}"
       pc_total="${pc_total:-0}"
     fi
     if (( pc_total > 0 )) && (( pc_before >= pc_total )); then
-      echo "PC ladder complete at round $round" | tee -a "$out/probe-status.txt"
-      break
+      # This stage is done. The next one may need a server round-trip (or an
+      # app restart) to unlock; poll before spending an ad on a stale page.
+      echo "PC stage complete at $pc_before/$pc_total; waiting for next stage" | tee -a "$out/probe-status.txt"
+      pc_planned=$((pc_planned - 1))
+      unlocked="false"
+      for wait in $(seq 1 30); do
+        if ! time_left; then break; fi
+        sleep 20
+        capture_ui "screen-pc-unlock-$round-$wait"
+        fresh="$(pc_progress "$out/screen-pc-unlock-$round-$wait.xml" || echo "")"
+        if [[ "$fresh" == "done done" ]]; then
+          pc_chain_complete="true"
+          unlocked="true"
+          echo "PC chain complete after stage $pc_total" | tee -a "$out/probe-status.txt"
+          break
+        fi
+        if [[ -z "$fresh" ]]; then continue; fi
+        read -r next_before next_total <<< "$fresh"
+        if (( next_before == 0 )) && (( next_total > 0 )); then
+          unlocked="true"
+          pc_before=0
+          pc_total=$next_total
+          echo "next stage unlocked: $next_before/$next_total" | tee -a "$out/probe-status.txt"
+          break
+        fi
+        # uiautomator sometimes keeps serving a stale dump after the page
+        # has actually changed; force a fresh app restart every 5 polls.
+        if (( wait % 5 == 0 )); then
+          return_to_pc_page
+        fi
+      done
+      if [[ "$unlocked" != "true" ]]; then
+        echo "next stage never unlocked" | tee -a "$out/probe-status.txt"
+        break
+      fi
+      continue
     fi
 
     button_text=""
@@ -511,10 +597,6 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round button never became ready (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "pc-notready-$round"
-      if (( consecutive_fail >= 3 )); then
-        echo "PC phase gave up waiting for the ad button" | tee -a "$out/probe-status.txt"
-        break
-      fi
       return_to_pc_page
       continue
     fi
@@ -537,10 +619,6 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round rewarded ad did not open (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "pc-noopen-$round"
-      if (( consecutive_fail >= 3 )); then
-        echo "PC phase gave up opening ads" | tee -a "$out/probe-status.txt"
-        break
-      fi
       return_to_pc_page
       continue
     fi
@@ -563,6 +641,11 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       if [[ -z "$fresh" ]]; then
         continue
       fi
+      if [[ "$fresh" == "done done" ]]; then
+        verified="true"
+        pc_before="$pc_total"
+        break
+      fi
       read -r after_count after_total <<< "$fresh"
       if (( after_count > pc_before )); then
         verified="true"
@@ -579,10 +662,6 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round NOT verified (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "pc-noverify-$round"
-      if (( consecutive_fail >= 3 )); then
-        echo "PC phase gave up after unverified rounds" | tee -a "$out/probe-status.txt"
-        break
-      fi
     fi
   done
 fi
@@ -603,7 +682,9 @@ if (( mobile_ads > 0 )); then
 fi
 pc_success="true"
 if [[ "$pc_watch_enabled" == "true" ]]; then
-  if (( pc_total > 0 )) && (( pc_before >= pc_total )); then
+  if [[ "$pc_chain_complete" == "true" ]]; then
+    :
+  elif (( pc_total > 0 )) && (( pc_before >= pc_total )); then
     :
   elif (( pc_ok < pc_planned )); then
     pc_success="false"
@@ -617,9 +698,10 @@ fi
   echo "mobile_watch_after=$watch_final"
   echo "mobile_next_after=$next_final"
   echo "mobile_verified=$mobile_ok/$mobile_planned"
-  echo "pc_progress_before=$pc_before"
-  echo "pc_progress_after=$pc_before"
+  echo "pc_progress_before=$pc_progress_start"
+  echo "pc_progress_after=$pc_before/$pc_total"
   echo "pc_progress_total=$pc_total"
+  echo "pc_chain_complete=$pc_chain_complete"
   echo "pc_verified=$pc_ok/$pc_planned"
   echo "mobile_success=$mobile_success"
   echo "pc_success=$pc_success"

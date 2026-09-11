@@ -9,9 +9,9 @@ on:
         default: "7"
         type: string
       pc_ads:
-        description: Max PC ladder ads to watch (0 = report page only)
+        description: Max PC ads per run (staged chain, 0 = report only)
         required: true
-        default: "9"
+        default: "15"
         type: string
       redroid_image:
         description: Native ARM64 Redroid image
@@ -30,10 +30,10 @@ on:
           - "guest"
           - "auto"
   schedule:
-    # Beijing 09:17 with a second same-day attempt as a self-healing catch-up.
-    # Runs only on the default branch.
+    # One daily run is enough: the script keeps retrying (with cooldowns) and
+    # follows the staged PC chain until everything is claimed, so the second
+    # same-day cron was only ever a fallback for the old give-up-early logic.
     - cron: "17 1 * * *"
-    - cron: "23 13 * * *"
 
 permissions:
   contents: read
@@ -45,7 +45,7 @@ concurrency:
 jobs:
   rewards:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
@@ -120,8 +120,8 @@ jobs:
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
           ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
           ETALIEN_MOBILE_ADS: ${{ inputs.mobile_ads || '7' }}
-          ETALIEN_PC_ADS: ${{ inputs.pc_ads || '9' }}
-          ETALIEN_TOTAL_BUDGET: "4400"
+          ETALIEN_PC_ADS: ${{ inputs.pc_ads || '15' }}
+          ETALIEN_TOTAL_BUDGET: "8100"
         shell: bash
         run: |
           if [[ -z "$ETALIEN_TOKEN" || -z "$ETALIEN_DVC" ]]; then
@@ -129,7 +129,7 @@ jobs:
             exit 1
           fi
           set +e
-          timeout --kill-after=15s 75m bash scripts/redroid-rewards.sh \
+          timeout --kill-after=15s 135m bash scripts/redroid-rewards.sh \
             artifacts/android_ETAPP_v3.13.10_.apk \
             diagnostics
           probe_code=$?
