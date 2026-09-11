@@ -81,17 +81,20 @@ protocol_value() {
 ad_is_open() {
   local dump
   dump="$(adb_quick shell dumpsys activity activities 2>/dev/null || true)"
-  # Android 12's Redroid dumpsys has no topResumedActivity field; the resumed
-  # activity surfaces as mResumedActivity/ResumedActivity instead.
-  if grep -Eq 'topResumedActivity=.*KsRewardVideoActivity|mResumedActivity:.*KsRewardVideoActivity|ResumedActivity:.*KsRewardVideoActivity' <<<"$dump"; then
-    return 0
+  local resumed
+  resumed="$(grep -E 'topResumedActivity=|mResumedActivity:|ResumedActivity:' <<<"$dump" | tail -n 1)"
+  if [[ -z "$resumed" ]]; then
+    return 1
   fi
-  # Non-Kuaishou rewarded activities (GDT/Octopus naming variants) so a PC
-  # slot served by another adapter is not misread as "did not open".
-  if grep -Eqi 'topResumedActivity=.*reward|mResumedActivity:.*reward|ResumedActivity:.*reward' <<<"$dump"; then
-    return 0
+  # Treat any resumed activity outside the app's own known pages as a
+  # rewarded-ad overlay. Enumerating SDK class names (KsReward...,
+  # com.qq.e.ads.PortraitADActivity, pangle's TTRewardVideoActivity) cannot
+  # stay exhaustive and missed GDT, which left the end card on screen for
+  # every later round.
+  if grep -Eqi 'SplashActivity|MainActivity|MobleADTaskListAndProductActivity|launcher3| ResolverActivity' <<<"$resumed"; then
+    return 1
   fi
-  return 1
+  return 0
 }
 
 capture_ui() {
@@ -127,6 +130,26 @@ close_reward_ad() {
     sleep 4
     ad_is_open || return 0
   done
+  hard_close_ad
+}
+
+# Last-resort recovery when BACK/close taps cannot dismiss the overlay. An ad
+# page left resumed blocks every later round's taps (they land inside the ad)
+# and wedges screencap/uiautomator for minutes, so force-stop and re-enter
+# the page instead of treating a stuck ad as irrecoverable.
+hard_close_ad() {
+  local mode="$1"
+  echo "hard_close_ad invoked ($mode)" | tee -a "$out/probe-status.txt"
+  adb_run shell am force-stop "$package_name" || true
+  sleep 5
+  if [[ "$mode" == "mobile" ]]; then
+    enter_mobile_page "hard-close-mobile.txt"
+    sleep 20
+  else
+    return_to_pc_page
+  fi
+  ad_is_open || return 0
+  echo "hard_close_ad failed to clear the overlay" | tee -a "$out/probe-status.txt"
   return 1
 }
 
@@ -365,7 +388,7 @@ if (( mobile_planned > 0 )); then
     capture_screen "screen-mobile-ad-started-$round"
     sleep 60
     capture_screen "screen-mobile-ad-finished-$round"
-    close_reward_ad || true
+    close_reward_ad mobile || true
 
     verified="false"
     for poll in $(seq 1 9); do
@@ -524,7 +547,7 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
     sleep 30
     capture_screen "screen-pc-ad-finished-$round"
 
-    close_reward_ad || true
+    close_reward_ad pc || true
 
     verified="false"
     for poll in $(seq 1 6); do
