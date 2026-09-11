@@ -121,6 +121,7 @@ capture_screen() {
 # KEYCODE_BACK (Kuaishou's end card consumes it) and only tap the top-right
 # close corner when the overlay is still up afterward.
 close_reward_ad() {
+  local mode="$1"
   local attempt
   for attempt in 1 2 3; do
     adb_run shell input keyevent 4 || true
@@ -130,7 +131,7 @@ close_reward_ad() {
     sleep 4
     ad_is_open || return 0
   done
-  hard_close_ad
+  hard_close_ad "$mode"
 }
 
 # Last-resort recovery when BACK/close taps cannot dismiss the overlay. An ad
