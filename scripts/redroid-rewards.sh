@@ -506,7 +506,7 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round button never became ready (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "pc-notready-$round"
-      if (( consecutive_fail >= 2 )); then
+      if (( consecutive_fail >= 3 )); then
         echo "PC phase gave up waiting for the ad button" | tee -a "$out/probe-status.txt"
         break
       fi
@@ -532,7 +532,7 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round rewarded ad did not open (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "pc-noopen-$round"
-      if (( consecutive_fail >= 2 )); then
+      if (( consecutive_fail >= 3 )); then
         echo "PC phase gave up opening ads" | tee -a "$out/probe-status.txt"
         break
       fi
@@ -574,7 +574,7 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round NOT verified (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
       collect_diagnostics "pc-noverify-$round"
-      if (( consecutive_fail >= 2 )); then
+      if (( consecutive_fail >= 3 )); then
         echo "PC phase gave up after unverified rounds" | tee -a "$out/probe-status.txt"
         break
       fi
