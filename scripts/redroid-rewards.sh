@@ -282,17 +282,28 @@ dismiss_startup_dialogs() {
 }
 
 # Bring the app back to the main page and switch to the PC acceleration card.
+# The tab tap can be swallowed while the game list is still loading (run
+# 34678547786 stuck 24 polls on the mobile skeleton), so verify the duration
+# card actually appears and retry the switch until it does.
 return_to_pc_page() {
   adb_run shell am force-stop "$package_name" || true
   adb_run shell am start -W -n "$splash_activity" > "$out/pc-launch.txt" 2>&1 || true
   sleep 20
   capture_ui screen-pc-entry
   dismiss_startup_dialogs
-  if ! tap_resource UISwitch; then
-    adb_run shell input tap 540 2070 || true
-    sleep 5
-    tap_resource UISwitch || true
-  fi
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    if grep -q 'id/UIPCDurationCard' "$out/screen-pc-entry.xml" 2>/dev/null; then
+      return 0
+    fi
+    if ! tap_resource UISwitch; then
+      adb_run shell input tap 540 2070 || true
+      sleep 5
+      tap_resource UISwitch || true
+    fi
+    sleep 10
+    capture_ui screen-pc-entry
+  done
   return 0
 }
 
@@ -610,6 +621,19 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       capture_ui "screen-pc-ready-$round"
       if button_text="$(pc_ad_ready "$out/screen-pc-ready-$round.xml")"; then
         break
+      fi
+      # Not even on the PC card page (stuck tab, dialog, crash): waiting the
+      # full 24 polls is pointless — restart periodically until we land back
+      # on the card. Every-poll restarts would only re-trigger the slow
+      # skeleton, so restart every 4th off-page poll.
+      if ! grep -q 'id/UIPCDurationCard' "$out/screen-pc-ready-$round.xml" 2>/dev/null; then
+        echo "pc_round=$round not on PC card page (attempt=$attempt), restarting" | tee -a "$out/probe-status.txt"
+        if (( attempt % 4 == 0 )); then
+          return_to_pc_page
+        else
+          sleep 15
+        fi
+        continue
       fi
       if grep -qE 'id/UIClose|id/UISubmit|packageinstaller' \
           "$out/screen-pc-ready-$round.xml" 2>/dev/null; then
