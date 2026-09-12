@@ -482,6 +482,18 @@ for attempt in $(seq 1 24); do
   if button_text="$(pc_ad_ready "$out/screen-pc-reward.xml")"; then
     break
   fi
+  # The update dialog is shown with a delay after launch — late enough that
+  # return_to_pc_page's dismissal pass missed it (run 34676548726 stalled
+  # exactly here). Dismiss in place and re-switch if it covered the card.
+  if grep -qE 'id/UIClose|id/UISubmit|packageinstaller' \
+      "$out/screen-pc-reward.xml" 2>/dev/null; then
+    dismiss_startup_dialogs
+    capture_ui screen-pc-reward
+    if ! grep -q 'id/UIPCDurationCard' "$out/screen-pc-reward.xml" 2>/dev/null \
+        && grep -q 'id/UISwitch' "$out/screen-pc-reward.xml" 2>/dev/null; then
+      tap_resource UISwitch || true
+    fi
+  fi
 done
 
 if [[ -z "$button_text" ]] \
@@ -598,6 +610,15 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       capture_ui "screen-pc-ready-$round"
       if button_text="$(pc_ad_ready "$out/screen-pc-ready-$round.xml")"; then
         break
+      fi
+      if grep -qE 'id/UIClose|id/UISubmit|packageinstaller' \
+          "$out/screen-pc-ready-$round.xml" 2>/dev/null; then
+        dismiss_startup_dialogs
+        capture_ui "screen-pc-ready-$round"
+        if ! grep -q 'id/UIPCDurationCard' "$out/screen-pc-ready-$round.xml" 2>/dev/null \
+            && grep -q 'id/UISwitch' "$out/screen-pc-ready-$round.xml" 2>/dev/null; then
+          tap_resource UISwitch || true
+        fi
       fi
     done
     if [[ -z "$button_text" ]]; then
