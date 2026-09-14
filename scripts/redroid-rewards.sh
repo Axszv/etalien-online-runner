@@ -25,6 +25,14 @@ mobile_ads="${ETALIEN_MOBILE_ADS:-0}"
 pc_ads="${ETALIEN_PC_ADS:-0}"
 total_budget="${ETALIEN_TOTAL_BUDGET:-4500}"
 deadline=$((SECONDS + total_budget))
+# The mobile ladder and the PC ladder share one wall-clock budget. A bad ad
+# day can make the mobile phase burn most of it (run 34813029551: 2h13m for
+# 7 mobile ads, then 0 minutes left for PC), starving the PC ladder entirely.
+# Cap the mobile phase so the PC ladder always gets a floor; when mobile
+# finishes early the PC phase still inherits every remaining second.
+mobile_budget="${ETALIEN_MOBILE_BUDGET:-$(( total_budget * 45 / 100 ))}"
+mobile_deadline=$(( SECONDS + mobile_budget ))
+(( mobile_deadline < deadline )) || mobile_deadline=$deadline
 mkdir -p "$out"
 : > "$out/probe-status.txt"
 
@@ -71,6 +79,10 @@ trap on_exit EXIT
 
 time_left() {
   (( SECONDS < deadline ))
+}
+
+mobile_time_left() {
+  (( SECONDS < mobile_deadline ))
 }
 
 protocol_snapshot() {
@@ -409,14 +421,14 @@ if (( mobile_planned > 0 )); then
   round=0
   while (( mobile_ok < mobile_planned )); do
     round=$((round + 1))
-    if ! time_left; then
-      echo "time budget exhausted before mobile round $round" | tee -a "$out/probe-status.txt"
+    if ! mobile_time_left; then
+      echo "mobile budget exhausted before mobile round $round (claimed $mobile_ok/$mobile_planned)" | tee -a "$out/probe-status.txt"
       break
     fi
     if (( consecutive_fail >= 3 )); then
       fail_cooldown 300
       consecutive_fail=1
-      if ! time_left; then break; fi
+      if ! mobile_time_left; then break; fi
     fi
     if ! protocol_snapshot "$out/activity-before-$round.json"; then
       echo "mobile_round=$round protocol poll failed" | tee -a "$out/probe-status.txt"
