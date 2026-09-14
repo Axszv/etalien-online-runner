@@ -45,7 +45,7 @@ concurrency:
 jobs:
   rewards:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 150
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -121,7 +121,7 @@ jobs:
           ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
           ETALIEN_MOBILE_ADS: ${{ inputs.mobile_ads || '7' }}
           ETALIEN_PC_ADS: ${{ inputs.pc_ads || '15' }}
-          ETALIEN_TOTAL_BUDGET: "8100"
+          ETALIEN_TOTAL_BUDGET: "19500"
         shell: bash
         run: |
           if [[ -z "$ETALIEN_TOKEN" || -z "$ETALIEN_DVC" ]]; then
@@ -129,7 +129,7 @@ jobs:
             exit 1
           fi
           set +e
-          timeout --kill-after=15s 135m bash scripts/redroid-rewards.sh \
+          timeout --kill-after=15s 330m bash scripts/redroid-rewards.sh \
             artifacts/android_ETAPP_v3.13.10_.apk \
             diagnostics
           probe_code=$?
