@@ -70,6 +70,26 @@ collect_diagnostics() {
   grep -aiE '80100|102006|no.?bid|no_?fill|RewardVideo|KsReward|onAdError|onRewardVerify|reward.*fail' \
     "$out/logcat-$tag.txt" 2>/dev/null \
     | tail -n 60 | tee "$out/ad-sdk-signatures-$tag.txt" || true
+  prune_diagnostics
+}
+
+# A 5-hour run can fail 30+ rounds; each set is ~1MB of logcat. Keep only the
+# most recent sets so the account's 0.5GB Actions storage quota survives the
+# month, while the newest failures stay forensically intact.
+prune_diagnostics() {
+  local keep=5
+  local -a tags=()
+  mapfile -t tags < <(ls -1t "$out"/logcat-*.txt 2>/dev/null \
+    | sed -E 's#.*/logcat-(.+)\.txt#\1#' | tail -n +$((keep + 1)))
+  local t
+  for t in "${tags[@]}"; do
+    rm -f "$out/logcat-$t.txt" "$out/activities-$t.txt" \
+          "$out/ad-sdk-signatures-$t.txt"
+    # Screenshots are named by round number; drop the ones from a pruned set.
+    if [[ "$t" == *-*-* ]]; then
+      rm -f "$out"/screen-*-"${t##*-}".png 2>/dev/null || true
+    fi
+  done
 }
 
 on_exit() {
@@ -114,6 +134,7 @@ ad_is_open() {
 
 capture_ui() {
   local name="$1"
+  local with_png="${2:-}"
   local attempt
   rm -f "$out/$name.xml"
   for attempt in 1 2 3; do
@@ -124,7 +145,11 @@ capture_ui() {
     [[ -s "$out/$name.xml" ]] && break
     sleep 2
   done
-  adb_run exec-out screencap -p > "$out/$name.png" || true
+  # PNGs are for human eyes only and 1MB each; account Actions storage is a
+  # hard 0.5GB/month quota, so only the few key screens opt in.
+  if [[ -n "$with_png" ]]; then
+    adb_run exec-out screencap -p > "$out/$name.png" || true
+  fi
 }
 
 capture_screen() {
@@ -466,6 +491,10 @@ if (( mobile_planned > 0 )); then
       mobile_ok=$((mobile_ok + 1))
       consecutive_fail=0
       echo "mobile_round=$round verified watch=$after" | tee -a "$out/probe-status.txt"
+      # A verified round needs no forensic screenshots; keep only the XML
+      # trail so a 5-hour run does not eat the account's 0.5GB storage quota.
+      rm -f "$out/screen-mobile-ad-started-$round.png" \
+            "$out/screen-mobile-ad-finished-$round.png"
     else
       consecutive_fail=$((consecutive_fail + 1))
       echo "mobile_round=$round NOT verified (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
@@ -722,6 +751,8 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       pc_ok=$((pc_ok + 1))
       consecutive_fail=0
       echo "pc_round=$round verified progress=$pc_before/$pc_total" | tee -a "$out/probe-status.txt"
+      rm -f "$out/screen-pc-ad-started-$round.png" "$out/screen-pc-ad-15s-$round.png" \
+            "$out/screen-pc-ad-45s-$round.png" "$out/screen-pc-ad-finished-$round.png"
     else
       consecutive_fail=$((consecutive_fail + 1))
       echo "pc_round=$round NOT verified (consecutive_fail=$consecutive_fail)" | tee -a "$out/probe-status.txt"
