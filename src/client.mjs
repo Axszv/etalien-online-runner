@@ -74,15 +74,27 @@ export function decodeApiError(buffer) {
 }
 
 export class EtalienClient {
-  constructor({ token = "", dvc = "", channel = "official", baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch } = {}) {
+  constructor({ token = "", dvc = "", channel = "official", baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch, timeoutMs = Number(process.env.ETALIEN_TIMEOUT_MS || 30000), maxAttempts = Number(process.env.ETALIEN_MAX_ATTEMPTS || 3), retryBaseDelayMs = 2000 } = {}) {
     this.token = token;
     this.dvc = dvc;
     this.channel = channel;
     this.baseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
     this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
+    this.maxAttempts = Math.max(1, maxAttempts);
+    this.retryBaseDelayMs = retryBaseDelayMs;
   }
 
-  async requestRaw(path, { method = "GET", body, contentType = "application/x-protobuf" } = {}) {
+  static sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  static isRetryableStatus(status) {
+    return status === 429 || (status >= 500 && status <= 599);
+  }
+
+  async requestRawOnce(path, { method = "GET", body, contentType = "application/x-protobuf" } = {}) {
+    // Re-sign on every attempt so ts/nonce stay fresh across retries.
     const url = signRequest(method, new URL(path.replace(/^\//, ""), this.baseUrl).toString());
     const headers = {
       "accept": "application/x-protobuf",
@@ -93,24 +105,59 @@ export class EtalienClient {
       headers["content-type"] = contentType;
       headers["content-length"] = String(body.length);
     }
-    const response = await this.fetchImpl(url, { method, headers, body });
+    const response = await this.fetchImpl(url, {
+      method,
+      headers,
+      body,
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
     const data = new Uint8Array(await response.arrayBuffer());
     return { ok: response.ok, status: response.status, data };
   }
 
-  async request(path, options = {}) {
-    const result = await this.requestRaw(path, options);
-    if (!result.ok) {
-      let detail;
+  async requestRaw(path, options = {}) {
+    let lastError;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       try {
-        const error = decodeApiError(result.data);
-        detail = `${error.code} ${error.message} ${error.detail}`.trim();
-      } catch {
-        detail = new TextDecoder().decode(result.data).slice(0, 500);
+        return await this.requestRawOnce(path, options);
+      } catch (error) {
+        lastError = error;
+        if (attempt >= this.maxAttempts) break;
+        await EtalienClient.sleep(this.retryBaseDelayMs * attempt);
       }
-      throw new Error(`${options.method || "GET"} ${path} failed: HTTP ${result.status} ${detail}`);
     }
-    return result.data;
+    throw lastError;
+  }
+
+  async request(path, options = {}) {
+    let lastError;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      let result;
+      try {
+        result = await this.requestRawOnce(path, options);
+      } catch (error) {
+        // Network-level failure (DNS, connect timeout, reset): retry.
+        lastError = error;
+        if (attempt >= this.maxAttempts) break;
+        await EtalienClient.sleep(this.retryBaseDelayMs * attempt);
+        continue;
+      }
+      if (result.ok) return result.data;
+      if (!EtalienClient.isRetryableStatus(result.status)) {
+        let detail;
+        try {
+          const error = decodeApiError(result.data);
+          detail = `${error.code} ${error.message} ${error.detail}`.trim();
+        } catch {
+          detail = new TextDecoder().decode(result.data).slice(0, 500);
+        }
+        throw new Error(`${options.method || "GET"} ${path} failed: HTTP ${result.status} ${detail}`);
+      }
+      lastError = new Error(`${options.method || "GET"} ${path} failed: HTTP ${result.status} (attempt ${attempt}/${this.maxAttempts})`);
+      if (attempt >= this.maxAttempts) break;
+      await EtalienClient.sleep(this.retryBaseDelayMs * attempt);
+    }
+    throw lastError;
   }
 
   async getAdActivity() {
