@@ -592,7 +592,12 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
   # after a pause repeatedly succeed where an immediate re-tap repeats it.
   consecutive_fail=0
   rounds_used=0
-  max_rounds=$((pc_ads + 20))
+  # No hard round cap: a poor-fill day legitimately needs many rounds, and the
+  # only thing that should stop the PC ladder is running out of wall-clock
+  # budget. (A fixed pc_ads+20 cap from the 8100s-budget era now cuts the run
+  # off with time left on the board, e.g. run 37898864948 stranded stage 3 at
+  # 5/9 on round 35 with time_left=yes.) round tracks progress for logging.
+  max_rounds=$((pc_ads + 500))
   while (( pc_planned > 0 )); do
     rounds_used=$((rounds_used + 1))
     if (( rounds_used > max_rounds )) || ! time_left; then
