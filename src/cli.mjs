@@ -57,9 +57,12 @@ async function main() {
   }
 
   if (command === "login-password") {
-    const phone = process.argv[3];
+    let phone = process.argv[3];
     const password = process.argv[4];
     if (!phone || !password) throw new Error("usage: node src/cli.mjs login-password PHONE PASSWORD");
+    // The API validates PhoneNumber to 14 bytes (E.164 with the +86 country
+    // code). A bare 11-digit mainland number fails the 'len' tag with a 500.
+    if (!phone.startsWith("+") && /^1\d{10}$/.test(phone)) phone = `+86${phone}`;
     const session = await client.loginPassword(phone, password);
     if (!session.authorization) throw new Error("phone binding succeeded without an authorization token");
     fs.writeFileSync(new URL("../.session.json", import.meta.url), JSON.stringify({
