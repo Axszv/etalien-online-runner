@@ -17,3 +17,8 @@ hs_err_pid*.log
 .tmp-ldplayer-adcompare.log
 hs_err_pid*.log
 testlab-build/
+
+# Credential files must never be committed
+github_pat_*.md
+*_pat_*.md
+外星仔*.md
