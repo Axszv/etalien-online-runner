@@ -164,6 +164,17 @@ export class EtalienClient {
     return decodeAdActivity(await this.request("/award/v1/ad/activity"));
   }
 
+  async refreshToken() {
+    // POST /v2/account/refresh/token takes an empty body and the current
+    // token in the Authorization header; the response carries the rotated
+    // token as field 1 (string).
+    const result = await this.requestRaw("/v2/account/refresh/token", { method: "POST", body: new Uint8Array(0) });
+    const fields = parseFields(result.data);
+    const token = stringField(fields, 1);
+    if (!token) throw new Error("refresh/token response did not include a token");
+    return { token };
+  }
+
   async requestLoginCode(phoneNumber) {
     return this.request(`/account/v1/get_login_verification_code?phone_number=${encodeURIComponent(phoneNumber)}`);
   }

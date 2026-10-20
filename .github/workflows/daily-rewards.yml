@@ -71,6 +71,54 @@ jobs:
         with:
           node-version: 24
 
+      # Rotate the session token before the expensive container work: a token
+      # that is about to expire would otherwise kill the run at the protocol
+      # step, and refreshing is cheap. Falls back to a phone login when the
+      # stored token is already rejected.
+      - name: Renew ETAlien session
+        env:
+          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
+          ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
+          ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
+          ETALIEN_PHONE: ${{ secrets.ETALIEN_PHONE }}
+          ETALIEN_PASSWORD: ${{ secrets.ETALIEN_PASSWORD }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        shell: bash
+        run: |
+          set +e
+          renew_out="$(node scripts/renew-token.mjs 2>&1)"
+          renew_code=$?
+          if (( renew_code != 0 )); then
+            echo "renewal failed (exit $renew_code); continuing with the stored token"
+            echo "$renew_out" | grep -avE '^token=' | tail -n 5
+            # Keep the stored token so the reward step still has one.
+            echo "ETALIEN_TOKEN=$ETALIEN_TOKEN" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          new_token="$(sed -n 's/^token=//p' <<<"$renew_out" | head -n 1)"
+          source="$(sed -n 's/^source=//p' <<<"$renew_out" | head -n 1)"
+          if [[ -z "$new_token" ]]; then
+            echo "renewal produced no token; continuing with the stored token"
+            echo "ETALIEN_TOKEN=$ETALIEN_TOKEN" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # Keep the rotated token out of the log: it is a live credential and
+          # this repository is public.
+          echo "::add-mask::$new_token"
+          echo "renewed via $source"
+          # Hand the fresh token to the reward step without printing it.
+          echo "ETALIEN_TOKEN=$new_token" >> "$GITHUB_ENV"
+          if [[ -n "$GH_PAT" ]]; then
+            if printf '%s' "$new_token" | GH_TOKEN="$GH_PAT" gh secret set ETALIEN_TOKEN \
+                --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
+              echo "stored the renewed token in the ETALIEN_TOKEN secret"
+            else
+              echo "warning: could not update the ETALIEN_TOKEN secret"
+            fi
+          else
+            echo "GH_PAT is not configured; the renewed token is only used for this run"
+          fi
+
       - name: Install native ARM host tools
         shell: bash
         run: |
@@ -116,7 +164,6 @@ jobs:
 
       - name: Watch daily rewarded ads
         env:
-          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
           ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
           ETALIEN_MOBILE_ADS: ${{ inputs.mobile_ads || '7' }}
@@ -146,7 +193,9 @@ jobs:
       - name: Collect Redroid logs
         if: always()
         env:
-          ETALIEN_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
+          # The renewed token arrives through GITHUB_ENV; the stored one is
+          # redacted as well in case it still shows up in the logs.
+          ETALIEN_OLD_TOKEN: ${{ secrets.ETALIEN_TOKEN }}
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
         shell: bash
         run: |
@@ -163,10 +212,10 @@ jobs:
           docker cp redroid:/data/tombstones/. diagnostics/tombstones/ \
             > diagnostics/tombstones-copy.txt 2>&1 || true
           sudo dmesg --ctime | tail -n 2000 > diagnostics/dmesg.txt 2>&1 || true
-          if [[ -n "$ETALIEN_TOKEN" || -n "$ETALIEN_DVC" ]]; then
+          if [[ -n "$ETALIEN_TOKEN" || -n "$ETALIEN_DVC" || -n "$ETALIEN_OLD_TOKEN" ]]; then
             node -e '
               const fs = require("fs");
-              const secrets = [process.env.ETALIEN_TOKEN, process.env.ETALIEN_DVC].filter(Boolean);
+              const secrets = [process.env.ETALIEN_TOKEN, process.env.ETALIEN_OLD_TOKEN, process.env.ETALIEN_DVC].filter(Boolean);
               const files = ["diagnostics/container-logcat.txt", "diagnostics/media-codec.txt", "diagnostics/redroid.log"];
               for (const p of files) {
                 if (!fs.existsSync(p)) continue;
