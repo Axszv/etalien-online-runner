@@ -13,6 +13,11 @@ on:
         required: true
         default: "15"
         type: string
+      apk_pin:
+        description: "Pin the Android build to this version (e.g. 3.17.10) instead of resolving the latest"
+        required: false
+        default: ""
+        type: string
       redroid_image:
         description: Native ARM64 Redroid image
         required: true
@@ -49,23 +54,50 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore APK fixture cache
-        id: apk-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: artifacts/android_ETAPP_v3.17.10.apk
-          key: etalien-apk-android-fixture-v3.17.10
-
-      - name: Download private APK fixture
-        if: steps.apk-cache.outputs.cache-hit != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # Resolve the build the same way the official site does, so the container
+      # never runs a version the app is being forced to upgrade from. The
+      # endpoint is the one et001.com calls when you click 手机端; it needs no
+      # token, only the x-eta header. Falls back to the pinned release asset
+      # when the lookup fails.
+      - name: Resolve APK fixture
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          gh release download android-fixture-v3.17.10 \
-            --pattern android_ETAPP_v3.17.10.apk \
-            --dir artifacts
+          apk="artifacts/android_ETAPP_latest.apk"
+          url=""
+          pin="${{ inputs.apk_pin }}"
+          if [[ -n "$pin" ]]; then
+            url="https://file.et-cdn.com/upd/android/ETAPP_v${pin}.apk"
+            echo "pinned to $pin"
+          elif resp="$(curl -fsS -m 30 -X POST \
+              https://api.et-api.com/v2/booster/app/update/info/get \
+              -H 'content-type: application/json' \
+              -H 'x-eta: os=2&ver=1.0.0&dvc=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF&ch=h5' \
+              -d '{"os":"Mobile"}' 2>/dev/null)"; then
+            url="$(printf '%s' "$resp" | jq -r '.download_url // empty')"
+          fi
+          if [[ -n "$url" ]] && curl -fsSL -m 300 -o "$apk" "$url"; then
+            echo "resolved the current build from $url"
+          else
+            echo "::warning::could not resolve the current build; using the pinned fixture"
+            rm -f "$apk"
+            GH_TOKEN="${{ github.token }}" gh release download android-fixture-v3.17.10 \
+              --pattern android_ETAPP_v3.17.10.apk \
+              --dir artifacts
+            apk="artifacts/android_ETAPP_v3.17.10.apk"
+          fi
+          # A build that dropped the resource ids the runner drives would fail
+          # every round, so reject it here instead of burning the container.
+          unzip -p "$apk" resources.arsc > artifacts/resources.arsc
+          for name in UIPCDurationCard UISwitch UIClose UISubmit UIChangeLog; do
+            if ! grep -qa "$name" artifacts/resources.arsc; then
+              echo "::error::$apk does not contain $name; refusing to run it"
+              exit 1
+            fi
+          done
+          echo "using $apk ($(stat -c%s "$apk") bytes)"
+          echo "ETALIEN_APK=$apk" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -177,18 +209,11 @@ jobs:
           fi
           set +e
           timeout --kill-after=15s 330m bash scripts/redroid-rewards.sh \
-            artifacts/android_ETAPP_v3.17.10.apk \
+            "$ETALIEN_APK" \
             diagnostics
           probe_code=$?
           pkill -9 adb || true
           exit "$probe_code"
-
-      - name: Save APK fixture cache
-        if: steps.apk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: artifacts/android_ETAPP_v3.17.10.apk
-          key: etalien-apk-android-fixture-v3.17.10
 
       - name: Collect Redroid logs
         if: always()
