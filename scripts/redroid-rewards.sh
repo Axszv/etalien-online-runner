@@ -218,6 +218,27 @@ tap_resource() {
   adb_run shell input tap $coordinates
 }
 
+# Tap a node by its visible label. System dialogs use android:id/button1 and
+# android:id/button2, whose positive/negative roles are not stable across
+# Android builds, so match the text instead of the id.
+tap_text() {
+  local xml="$1"
+  local label="$2"
+  local coordinates
+  coordinates="$(node - "$xml" "$label" <<'NODE'
+const fs = require("fs");
+const [file, label] = process.argv.slice(2);
+const source = fs.readFileSync(file, "utf8");
+const tag = (source.match(/<node\b[^>]*>/g) || [])
+  .find((item) => item.includes(`text="${label}"`));
+const bounds = tag?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+if (!bounds) process.exit(1);
+console.log(`${Math.floor((+bounds[1] + +bounds[3]) / 2)} ${Math.floor((+bounds[2] + +bounds[4]) / 2)}`);
+NODE
+)" || return 1
+  adb_run shell input tap $coordinates
+}
+
 pc_progress() {
   local xml="$1"
   node - "$xml" "$package_name:id/UIStateTitle" <<'NODE'
@@ -286,16 +307,37 @@ enter_mobile_page() {
 }
 
 # Startup dialogs share resource ids with real page controls, so each is
-# identified by its neighbors before tapping: the update dialog pairs
-# UISubmit=立即更新 with UIClose; a bare UISubmit (我知道了) is a notice
+# identified by its neighbors before tapping: a forced-update dialog pairs
+# UISubmit=立即更新 with UIVersion; a bare UISubmit (我知道了) is a notice
 # whose only safe action is itself; the installer security dialog is
 # identified by its package and cancelled; UIConfirm is the privacy prompt.
+#
+# v3.17.10 dropped UIClose from the update dialog, leaving 立即更新 as the
+# only clickable node. Tapping it opened PackageInstaller, whose "unknown
+# sources" prompt then covered the PC card for the whole run — that is what
+# killed runs 40068184262 and 40168145061. Never tap UISubmit while
+# UIVersion is on screen.
 dismiss_startup_dialogs() {
   for attempt in 1 2 3 4; do
     capture_ui screen-pc-entry
+    if grep -q 'id/UIVersion' "$out/screen-pc-entry.xml" 2>/dev/null; then
+      if grep -q 'id/UIClose' "$out/screen-pc-entry.xml" 2>/dev/null; then
+        tap_resource UIClose || true
+        sleep 3
+        continue
+      fi
+      echo "forced update dialog has no close button; backing out" \
+        | tee -a "$out/probe-status.txt"
+      adb_run shell input keyevent 4 || true
+      sleep 2
+      continue
+    fi
     if grep -q 'package="com.android.packageinstaller"' \
         "$out/screen-pc-entry.xml" 2>/dev/null; then
-      adb_run shell input tap 235 1460 || true
+      # Cancel the "isn't allowed to install unknown apps" prompt: its
+      # positive button opens Settings and strands the run there.
+      tap_text "$out/screen-pc-entry.xml" CANCEL \
+        || adb_run shell input tap 235 1460 || true
       sleep 3
       continue
     fi
@@ -537,7 +579,7 @@ for attempt in $(seq 1 24); do
   # The update dialog is shown with a delay after launch — late enough that
   # return_to_pc_page's dismissal pass missed it (run 34676548726 stalled
   # exactly here). Dismiss in place and re-switch if it covered the card.
-  if grep -qE 'id/UIClose|id/UISubmit|packageinstaller' \
+  if grep -qE 'id/UIClose|id/UISubmit|id/UIVersion|packageinstaller' \
       "$out/screen-pc-reward.xml" 2>/dev/null; then
     dismiss_startup_dialogs
     capture_ui screen-pc-reward
@@ -557,6 +599,10 @@ if [[ -z "$button_text" ]] \
     echo "pc_reward_page=true (no ad button; ladder likely complete)" | tee -a "$out/probe-status.txt"
   else
     echo "pc_reward_page=false" | tee -a "$out/probe-status.txt"
+    if grep -q 'id/UIVersion' "$out/screen-pc-reward.xml" 2>/dev/null; then
+      echo "blocked by the forced app update dialog: the fixture APK is too old" \
+        | tee -a "$out/probe-status.txt"
+    fi
     exit 3
   fi
 fi
@@ -681,7 +727,7 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
         fi
         continue
       fi
-      if grep -qE 'id/UIClose|id/UISubmit|packageinstaller' \
+      if grep -qE 'id/UIClose|id/UISubmit|id/UIVersion|packageinstaller' \
           "$out/screen-pc-ready-$round.xml" 2>/dev/null; then
         dismiss_startup_dialogs
         capture_ui "screen-pc-ready-$round"

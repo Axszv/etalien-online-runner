@@ -53,8 +53,8 @@ jobs:
         id: apk-cache
         uses: actions/cache/restore@v4
         with:
-          path: artifacts/android_ETAPP_v3.13.10_.apk
-          key: etalien-apk-android-fixture-v3.13.10
+          path: artifacts/android_ETAPP_v3.17.10.apk
+          key: etalien-apk-android-fixture-v3.17.10
 
       - name: Download private APK fixture
         if: steps.apk-cache.outputs.cache-hit != 'true'
@@ -63,8 +63,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          gh release download android-fixture-v3.13.10 \
-            --pattern android_ETAPP_v3.13.10_.apk \
+          gh release download android-fixture-v3.17.10 \
+            --pattern android_ETAPP_v3.17.10.apk \
             --dir artifacts
 
       - uses: actions/setup-node@v4
@@ -177,7 +177,7 @@ jobs:
           fi
           set +e
           timeout --kill-after=15s 330m bash scripts/redroid-rewards.sh \
-            artifacts/android_ETAPP_v3.13.10_.apk \
+            artifacts/android_ETAPP_v3.17.10.apk \
             diagnostics
           probe_code=$?
           pkill -9 adb || true
@@ -187,8 +187,8 @@ jobs:
         if: steps.apk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: artifacts/android_ETAPP_v3.13.10_.apk
-          key: etalien-apk-android-fixture-v3.13.10
+          path: artifacts/android_ETAPP_v3.17.10.apk
+          key: etalien-apk-android-fixture-v3.17.10
 
       - name: Collect Redroid logs
         if: always()
