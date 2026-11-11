@@ -638,6 +638,12 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
   # after a pause repeatedly succeed where an immediate re-tap repeats it.
   consecutive_fail=0
   rounds_used=0
+  last_verified_round=0
+  cooldown_stage=0
+  # A day with a dead ad source must not burn the whole wall-clock budget.
+  # The worst successful run needed 23 consecutive misses before fill came
+  # back, so allow 30 and stop early if nothing at all has been verified.
+  stall_limit=30
   # No hard round cap: a poor-fill day legitimately needs many rounds, and the
   # only thing that should stop the PC ladder is running out of wall-clock
   # budget. (A fixed pc_ads+20 cap from the 8100s-budget era now cuts the run
@@ -650,8 +656,18 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       echo "PC phase stopping (rounds=$rounds_used, time_left=$(time_left && echo yes || echo no))" | tee -a "$out/probe-status.txt"
       break
     fi
+    if (( rounds_used - last_verified_round > stall_limit )); then
+      echo "PC phase stopping (no verified ad in the last $stall_limit rounds; ad source appears empty)" | tee -a "$out/probe-status.txt"
+      break
+    fi
     if (( consecutive_fail >= 3 )); then
-      fail_cooldown 300
+      # Back off gradually instead of a flat 300s: a short first wait keeps
+      # more attempts inside the same budget, while repeated no-fill still
+      # gets the longer recovery pause. Any verified ad resets the backoff.
+      cooldown_stage=$((cooldown_stage + 1))
+      wait_seconds=$(( 60 + cooldown_stage * 60 ))
+      if (( wait_seconds > 300 )); then wait_seconds=300; fi
+      fail_cooldown "$wait_seconds"
       consecutive_fail=1
       if ! time_left; then break; fi
     fi
@@ -704,6 +720,11 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
         echo "next stage never unlocked" | tee -a "$out/probe-status.txt"
         break
       fi
+      # Clearing a stage is real progress; don't let unlock polling count
+      # toward the no-progress stall limit.
+      last_verified_round=$round
+      cooldown_stage=0
+      consecutive_fail=0
       continue
     fi
 
@@ -801,6 +822,8 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
     if [[ "$verified" == "true" ]]; then
       pc_ok=$((pc_ok + 1))
       consecutive_fail=0
+      cooldown_stage=0
+      last_verified_round=$round
       echo "pc_round=$round verified progress=$pc_before/$pc_total" | tee -a "$out/probe-status.txt"
       rm -f "$out/screen-pc-ad-started-$round.png" "$out/screen-pc-ad-15s-$round.png" \
             "$out/screen-pc-ad-45s-$round.png" "$out/screen-pc-ad-finished-$round.png"
@@ -828,11 +851,14 @@ if (( mobile_ads > 0 )); then
 fi
 pc_success="true"
 if [[ "$pc_watch_enabled" == "true" ]]; then
+  # Success is the UI ladder being finished, not a count of ads played.
+  # Counting verified ads let partial runs (5/9, 8/9) report success for
+  # days while the ladder was still unfinished.
   if [[ "$pc_chain_complete" == "true" ]]; then
     :
   elif (( pc_total > 0 )) && (( pc_before >= pc_total )); then
     :
-  elif (( pc_ok < pc_planned )); then
+  else
     pc_success="false"
   fi
 fi
@@ -866,6 +892,13 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     cat "$out/probe-status.txt"
     echo '```'
   } >> "$GITHUB_STEP_SUMMARY"
+fi
+
+if [[ "$pc_success" != "true" ]]; then
+  echo "::error::PC ladder unfinished at $pc_before/$pc_total (verified $pc_ok/$pc_planned). Catch up the same day with: gh workflow run etalien-daily-rewards --repo Axszv/etalien-online-runner --ref main -f total_budget=8400"
+fi
+if [[ "$mobile_success" != "true" ]]; then
+  echo "::error::Mobile ladder unfinished: verified $mobile_ok/$mobile_planned, next=$next_final"
 fi
 
 if [[ "$mobile_success" != "true" || "$pc_success" != "true" ]]; then

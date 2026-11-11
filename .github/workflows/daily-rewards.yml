@@ -18,6 +18,11 @@ on:
         required: false
         default: ""
         type: string
+      total_budget:
+        description: "Wall-clock budget in seconds (default 19500 = 5h25m; use ~8400 for a same-day catch-up run)"
+        required: false
+        default: "19500"
+        type: string
       redroid_image:
         description: Native ARM64 Redroid image
         required: true
@@ -200,7 +205,7 @@ jobs:
           ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
           ETALIEN_MOBILE_ADS: ${{ inputs.mobile_ads || '7' }}
           ETALIEN_PC_ADS: ${{ inputs.pc_ads || '15' }}
-          ETALIEN_TOTAL_BUDGET: "19500"
+          ETALIEN_TOTAL_BUDGET: ${{ inputs.total_budget || '19500' }}
         shell: bash
         run: |
           if [[ -z "$ETALIEN_TOKEN" || -z "$ETALIEN_DVC" ]]; then
