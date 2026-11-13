@@ -669,7 +669,10 @@ if [[ "$pc_watch_enabled" == "true" ]] && (( pc_planned > 0 )); then
       if (( wait_seconds > 300 )); then wait_seconds=300; fi
       fail_cooldown "$wait_seconds"
       consecutive_fail=1
-      if ! time_left; then break; fi
+      if ! time_left; then
+        echo "PC phase stopping (wall-clock budget exhausted)" | tee -a "$out/probe-status.txt"
+        break
+      fi
     fi
     round=$rounds_used
     capture_ui "screen-pc-round-$round"
@@ -895,7 +898,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
 fi
 
 if [[ "$pc_success" != "true" ]]; then
-  echo "::error::PC ladder unfinished at $pc_before/$pc_total (verified $pc_ok/$pc_planned). Catch up the same day with: gh workflow run etalien-daily-rewards --repo Axszv/etalien-online-runner --ref main -f total_budget=8400"
+  echo "::error::PC ladder unfinished at $pc_before/$pc_total (verified $pc_ok/$pc_planned). The workflow schedules one fresh-container catch-up before the daily reset; to retry manually: gh workflow run etalien-daily-rewards --repo Axszv/etalien-online-runner --ref main -f total_budget=8400"
 fi
 if [[ "$mobile_success" != "true" ]]; then
   echo "::error::Mobile ladder unfinished: verified $mobile_ok/$mobile_planned, next=$next_final"

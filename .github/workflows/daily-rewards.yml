@@ -23,6 +23,11 @@ on:
         required: false
         default: "19500"
         type: string
+      attempt:
+        description: "Internal: 2 marks an automatic catch-up run (leave at 1)"
+        required: false
+        default: "1"
+        type: string
       redroid_image:
         description: Native ARM64 Redroid image
         required: true
@@ -200,6 +205,7 @@ jobs:
         run: bash scripts/redroid-container-probe.sh diagnostics
 
       - name: Watch daily rewarded ads
+        id: ads
         env:
           ETALIEN_DVC: ${{ secrets.ETALIEN_DVC }}
           ETALIEN_CHANNEL: ${{ secrets.ETALIEN_CHANNEL }}
@@ -264,3 +270,58 @@ jobs:
           path: diagnostics/
           if-no-files-found: warn
           retention-days: 7
+
+      # A dead ad source in the daytime container has recovered every single
+      # time a fresh container was started in the evening. Do that automatically
+      # once per day instead of relying on someone reading the failure email.
+      - name: Auto catch-up on unfinished ladder
+        if: failure() && steps.ads.outcome == 'failure' && inputs.attempt != '2'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::warning::GH_PAT is not configured; cannot schedule an automatic catch-up"
+            exit 0
+          fi
+          # Only an unfinished PC ladder is worth another run. APK/token/container
+          # failures would just fail again in the fresh container.
+          if ! grep -q '^pc_success=false' diagnostics/probe-status.txt 2>/dev/null; then
+            echo "Failure was not an unfinished PC ladder; no catch-up."
+            exit 0
+          fi
+
+          # The daily ladder resets at 00:00 Beijing = 16:00 UTC. Leave enough
+          # room for a full catch-up run before that boundary.
+          now="$(date -u +%s)"
+          reset="$(date -u -d "$(date -u +%Y-%m-%d) 16:00:00" +%s)"
+          remaining=$(( reset - now ))
+          if (( remaining < 6000 )); then
+            echo "Only ${remaining}s left before the daily reset; skipping catch-up."
+            exit 0
+          fi
+
+          # Never stack two catch-ups: a manual one may already be running, or
+          # one may already have succeeded earlier today.
+          busy="$(gh run list --repo "$repo" --limit 100 --event workflow_dispatch --status in_progress --json databaseId -q 'length' || echo 0)"
+          if (( busy > 0 )); then
+            echo "A catch-up run is already in progress; skipping."
+            exit 0
+          fi
+          today="$(date -u +%Y-%m-%d)"
+          done_today="$(gh run list --repo "$repo" --limit 100 --event workflow_dispatch --created ">=$today" --json conclusion -q '[.[] | select(.conclusion=="success")] | length' || echo 0)"
+          if (( done_today > 0 )); then
+            echo "A catch-up already succeeded today; skipping."
+            exit 0
+          fi
+
+          echo "Scheduling one fresh-container catch-up (${remaining}s before the daily reset)."
+          if gh workflow run etalien-daily-rewards --repo "$repo" --ref main \
+              -f total_budget=8400 -f attempt=2; then
+            echo "::notice::An automatic catch-up run has been started; no manual action needed."
+          else
+            echo "::warning::automatic catch-up dispatch failed (check GH_PAT scopes)"
+          fi
