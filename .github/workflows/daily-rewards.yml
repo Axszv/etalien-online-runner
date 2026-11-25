@@ -294,10 +294,12 @@ jobs:
             echo "::warning::GH_PAT is not configured; cannot schedule an automatic catch-up"
             exit 0
           fi
-          # Only an unfinished PC ladder is worth another run. APK/token/container
-          # failures would just fail again in the fresh container.
-          if ! grep -q '^pc_success=false' diagnostics/probe-status.txt 2>/dev/null; then
-            echo "Failure was not an unfinished PC ladder; no catch-up."
+          # Only an unfinished ladder is worth another run. APK/token/container
+          # failures would just fail again in the fresh container. Either ladder
+          # counts: on 11-21 the mobile one ended 5/7 while the PC one completed,
+          # and a PC-only guard skipped a run that still had rewards to collect.
+          if ! grep -qE '^(pc_success|mobile_success)=false' diagnostics/probe-status.txt 2>/dev/null; then
+            echo "Both ladders completed; no catch-up needed."
             exit 0
           fi
 
@@ -312,8 +314,18 @@ jobs:
           fi
 
           # Never stack two catch-ups: a manual one may already be running, or
-          # one may already have succeeded earlier today.
-          busy="$(gh run list --repo "$repo" --limit 100 --event workflow_dispatch --status in_progress --json databaseId -q 'length' || echo 0)"
+          # one may already have succeeded earlier today. Skip this run itself:
+          # it is a workflow_dispatch too whenever a human or a catch-up started
+          # it, so counting every in-progress dispatch matched nothing but
+          # itself and silently disabled the whole step (11-25).
+          busy=0
+          while read -r id; do
+            if [[ -z "$id" || "$id" == "$GITHUB_RUN_ID" ]]; then
+              continue
+            fi
+            busy=$(( busy + 1 ))
+          done < <(gh run list --repo "$repo" --limit 100 --event workflow_dispatch \
+                     --status in_progress --json databaseId -q '.[].databaseId' 2>/dev/null || true)
           if (( busy > 0 )); then
             echo "A catch-up run is already in progress; skipping."
             exit 0
