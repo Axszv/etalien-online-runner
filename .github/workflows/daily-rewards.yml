@@ -48,7 +48,14 @@ on:
     # One daily run is enough: the script keeps retrying (with cooldowns) and
     # follows the staged PC chain until everything is claimed, so the second
     # same-day cron was only ever a fallback for the old give-up-early logic.
-    - cron: "17 1 * * *"
+    #
+    # The daily ladder resets at 16:00 UTC (00:00 Beijing). GitHub's scheduler
+    # has been firing this workflow 6-10 hours after the cron time, so a 01:17
+    # cron only ever started at 16:00-19:00 Beijing, leaving 5-8 hours before
+    # the reset - and a full 19500s budget could cross it and wipe the ladder.
+    # Firing just after the reset absorbs the delay instead: a 16:17 cron
+    # starts 22:17-02:17 UTC, i.e. 14-18 hours before the next reset.
+    - cron: "17 16 * * *"
 
 permissions:
   contents: read
